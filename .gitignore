@@ -1,0 +1,73 @@
+# macOS metadata
+.DS_Store
+._*
+
+# Visual Studio state
+.vs/
+**/.vs/
+*.suo
+*.user
+*.VC.db
+*.VC.VC.opendb
+
+# Build output
+**/Debug/
+**/Release/
+**/x64/
+**/Win32/
+**/GeneratedFiles/
+**/*.obj
+**/*.pdb
+**/*.ilk
+**/*.tlog
+**/*.log
+**/*.lastbuildstate
+
+# Compiled programs and libraries
+*.exe
+*.dll
+*.lib
+*.exp
+
+# Bundled third-party dependencies/installers
+/ClientSDK/
+/OpenBLAS/
+/armadillo/
+/extern/
+/Installs/
+
+# Experiment outputs: preserve locally, never upload
+/PlaxRat/PlaxRat/Activity results/*
+!/PlaxRat/PlaxRat/Activity results/.gitkeep
+
+/PlaxRat/PlaxRat/Decoder results/*
+!/PlaxRat/PlaxRat/Decoder results/.gitkeep
+
+/PlaxRat/PlaxRat/Behavior training results/*
+!/PlaxRat/PlaxRat/Behavior training results/.gitkeep
+
+/PlaxRat/PlaxRat/Online training results/*
+!/PlaxRat/PlaxRat/Online training results/.gitkeep
+
+/PlaxRat/PlaxRat/Playback data/*
+!/PlaxRat/PlaxRat/Playback data/.gitkeep
+
+# Decoder parameters remain local pending data/licensing review
+/PlaxRat/PlaxRat/Online decode parameters/*
+!/PlaxRat/PlaxRat/Online decode parameters/.gitkeep
+
+# Root-level MATLAB data
+/PlaxRat/PlaxRat/*.mat
+/PlaxRat/PlaxRat/*.mattest
+
+# Generated code-analysis data
+/PlaxRat/CodeGraphData/
+
+# Visual Studio generated and legacy metadata
+*.aps
+*.vspscc
+*.vssscc
+
+# Legacy training outputs stored beside the results directory
+/PlaxRat/PlaxRat/Online training results*.txt
+/PlaxRat/PlaxRat/Online training results*.tmp_*

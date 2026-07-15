@@ -1,0 +1,28 @@
+<RCC>
+  <qresource prefix="/sound">
+    <file>1.5kHz10msSmall.wav</file>
+    <file>1.5kHz25msMinimum.wav</file>
+    <file>1.5kHz25msSmall.wav</file>
+    <file>1.5kHz250msSmall.wav</file>
+    <file>1.5kHz50msSmall.wav</file>
+    <file>1.5kHz200msSmall.wav</file>
+    <file>1.5kHz900msLoud.wav</file>
+    <file>4kHz25msLoud.wav</file>
+    <file>4kHz25msSmall.wav</file>
+    <file>4kHz200msLoud.wav</file>
+    <file>4kHz900msLoud.wav</file>
+    <file>10kHz10msSmall.wav</file>
+    <file>10kHz25msMinimum.wav</file>
+    <file>10kHz25msSmall.wav</file>
+    <file>10kHz25msLoud.wav</file>
+    <file>10kHz150msLoud.wav</file>
+    <file>10kHz200msSmall.wav</file>
+    <file>10kHz900msLoud.wav</file>
+    <file>1500hz.wav</file>
+    <file>4000hz.wav</file>
+    <file>10000hz.wav</file>
+    <file>short1500hz.wav</file>
+    <file>short4000hz.wav</file>
+    <file>short10000hz.wav</file>
+  </qresource>
+</RCC>
