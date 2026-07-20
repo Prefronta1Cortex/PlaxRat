@@ -1,4 +1,5 @@
 #pragma once
+#include "Plexon/Timebase.h"
 
 class PlaxRat;
 class State;
@@ -32,7 +33,7 @@ public:
 public: //callbacks
 	void onMessage(MessageType message);
 	uint idleTime;
-	static const int MaxIdleTime = 54;
+	static const int MaxIdleTime = PlaxTime::binsForMs(5400);
 	void updateIdleTime();
 	bool isTrialStarted();
 	int holdCnt = 0;     //2022-03-31 Add by TAN, Jieyuan 
@@ -64,7 +65,7 @@ class StateHolding : public State
 {
 	uint holdTime = 0;
 	bool isHold = true;
-	static const uint MaxPreHoldTime = 6; // 540ms/100ms
+	static const uint MaxPreHoldTime = PlaxTime::binsForMs(540);
 public:
 	// Inherited via State
 	virtual void execute() override;

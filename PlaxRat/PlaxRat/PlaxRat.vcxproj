@@ -261,6 +261,7 @@
     <ClInclude Include="MatTester.h" />
     <ClInclude Include="Paradigm.h" />
     <ClInclude Include="Plexon\PlexonConnecter.h" />
+    <ClInclude Include="Plexon\Timebase.h" />
     <ClInclude Include="resource.h" />
     <CustomBuild Include="qcustomplot.h" />
     <CustomBuild Include="QCustomPlot\qcustomplot.h">

@@ -1,4 +1,5 @@
 #include "DecoderKalman.h"
+#include "../Plexon/Timebase.h"
 
 
 DecoderKalman::DecoderKalman()
@@ -72,14 +73,40 @@ bool DecoderKalman::LoadFromMat(MATFile * pMat)
 		R = read_mat(pMat, "R");
 		CHECK_MAT(R);
 		mat a = read_mat(pMat, "trainSize");
+		CHECK_MAT(a);
 		decodeTrainSize = a(0);
-		mat b = read_mat(pMat, "tap");
-		lag = b(0);
+		const arma::uword featureCount = H.n_rows;
+		if (featureCount % PlaxRat::MaxChannelCount == 0) {
+			bias = false;
+			lag = static_cast<int>(
+				featureCount / PlaxRat::MaxChannelCount);
+		}
+		else if ((featureCount - 1) % PlaxRat::MaxChannelCount == 0) {
+			bias = true;
+			lag = static_cast<int>(
+				(featureCount - 1) / PlaxRat::MaxChannelCount);
+		}
+		else {
+			qWarning() << "Kalman H rows do not match channel/lag features.";
+			return false;
+		}
+		if (lag != PlaxTime::DecoderLagBins) {
+			qWarning() << "Model lag" << lag
+				<< "does not match required 10 ms lag"
+				<< PlaxTime::DecoderLagBins;
+			return false;
+		}
 		//K = read_mat(pMat, "K");
 		//CHECK_MAT(K);
 
 		x_mean = read_mat(pMat, "mState");// 2023-02-14 SONG,Zhiwei
 		spk_mean = read_mat(pMat, "mSpk");// 2023-02-14 SONG,Zhiwei
+		CHECK_MAT(x_mean);
+		CHECK_MAT(spk_mean);
+		if (spk_mean.n_elem != H.n_rows) {
+			qWarning() << "Kalman spike mean length does not match H rows.";
+			return false;
+		}
 		//qDebug() << "x_mean 0 is  " << x_mean[0];
 		//qDebug() << "spk_mean 0 is  " << spk_mean[1];
 

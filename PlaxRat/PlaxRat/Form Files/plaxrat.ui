@@ -1611,7 +1611,7 @@
       </rect>
      </property>
      <property name="text">
-      <string>Rest duration</string>
+      <string>Rest time (ms)</string>
      </property>
     </widget>
     <widget class="QLabel" name="label_58">
@@ -1707,7 +1707,7 @@
       </font>
      </property>
      <property name="text">
-      <string>Holding Cue Freq</string>
+      <string>Cue period (ms)</string>
      </property>
     </widget>
     <widget class="QLineEdit" name="editHoldingCueFreq">

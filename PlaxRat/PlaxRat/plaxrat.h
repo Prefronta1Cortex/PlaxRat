@@ -6,9 +6,11 @@
 #include "Plexon\threadplexon.hpp"
 #include <QFile>
 #include <QTextStream>
+#include <QTimer>
 #include "Paradigm.h"
 #include "Decoder\Decoder.h"
 #include "Displayer.h"
+#include "Plexon\Timebase.h"
 #include <future>
 
 #define MC 0
@@ -154,6 +156,13 @@ public:	//callbacks for paradigm
 	void setFail();
 	void setReaching(bool flag);			// 2022-03-31, add Reaching area, add by TAN, Jieyuan
 	bool SetVolumeLevel(double nVolume, bool bScalar);			// 2022-03-31, change volume based on rdRatio add by TAN, Jieyuan
+	void sendDigitalPulseSequence(
+		unsigned int deviceNum,
+		int firstBit,
+		int firstValue,
+		int delayMs,
+		int secondBit,
+		int secondValue = 1);
 	void enableBtnStart(bool flag);
 	void setCurrentState(QString stateName);
 	void changeTrainedNumber(int trainedNumber);
@@ -201,6 +210,7 @@ public: //counts
 	int tempHolding; //2023-02-11, added by SONG, Zhiwei
 	int tempAfterSuccess; //2023-02-11, added by SONG, Zhiwei
 public:
+	int binsSinceUiRefresh = 0;
 	int thrdTimerId = 0;
 	void timerEvent(QTimerEvent *event) override;
 	void setTone(int inputTone) { tone=inputTone; }

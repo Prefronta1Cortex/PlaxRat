@@ -1,9 +1,13 @@
 #pragma once
 
+#include <cstdint>
+#include <map>
 #include <queue>
 #include <iostream>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QTextStream>
+#include "Timebase.h"
 class PL_Event;
 typedef unsigned long DWORD;
 #include <armadillo>
@@ -36,6 +40,16 @@ class PlexonConnector
 	bool		  omissionFlag;                    //2022-10-02, add pressFlag, by SONG, Zhiwei
 	std::queue <int> leverQueue;
 	std::queue <int> actionQueue;
+	std::uint64_t ticksPerBin = 0;
+	std::uint64_t clockStartTicks = 0;
+	std::uint64_t latestObservedTicks = 0;
+	std::uint64_t firstOutputBin = 0;
+	std::uint64_t nextBinToEmit = 0;
+	bool binnerStarted = false;
+	unsigned int lateSpikeCount = 0;
+	int deliveryGuardMs = PlaxTime::DeliveryGuardMs;
+	QElapsedTimer plexonClock;
+	std::map<std::uint64_t, vec> pendingSpikeBins;
 
 public:
 
@@ -51,6 +65,13 @@ public:
 
 
 private:
+	std::uint64_t getTimestampTicks(const PL_Event &event) const;
+	std::uint64_t getAbsoluteBin(const PL_Event &event) const;
+	unsigned int getSessionBin(std::uint64_t absoluteBin) const;
+	void initializeBinner(std::uint64_t firstEventTicks);
+	void addSpikeToBin(const PL_Event &event, std::uint64_t absoluteBin);
+	void emitOneBin(std::uint64_t absoluteBin);
+	void flushCompletedBins();
 	bool receivePlexonSignal();
 	void receivePlaybackSignal(QString filename);
 	void logResult(PL_Event &info);

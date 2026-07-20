@@ -129,6 +129,9 @@
     <ClInclude Include="Plexon\PlexonConnecter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Plexon\Timebase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="Decoder\DecoderKalman.h">
       <Filter>Header Files</Filter>
     </ClInclude>

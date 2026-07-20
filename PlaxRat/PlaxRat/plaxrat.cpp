@@ -31,6 +31,7 @@ PlaxRat::PlaxRat(QWidget *parent)
 	, decoder(nullptr)
 	, trialNum(0)
 	, trainSize(2)
+	, holdingCueFre(PlaxTime::binsForMs(200))
 {
 	ui.setupUi(this);
 	ui.btnPause->setDisabled(true);
@@ -90,7 +91,18 @@ PlaxRat::PlaxRat(QWidget *parent)
 
 PlaxRat::~PlaxRat()
 {
-	
+	if (thrdTimerId != 0) {
+		killTimer(thrdTimerId);
+		thrdTimerId = 0;
+	}
+	if (thrdPlexon != nullptr) {
+		thrdPlexon->stop();
+		if (thrdPlexon->isRunning()) {
+			thrdPlexon->wait();
+		}
+		delete thrdPlexon;
+		thrdPlexon = nullptr;
+	}
 }
 
 void PlaxRat::on_btnRecord_clicked() {
@@ -107,24 +119,37 @@ void PlaxRat::on_btnRecord_clicked() {
 
 void PlaxRat::on_btnLoadFile_clicked()
 {
-	QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "./Online decode parameters", tr("*.txt *.mat"));
+	const QString fileName = QFileDialog::getOpenFileName(
+		this,
+		tr("Open File"),
+		"./Online decode parameters",
+		tr("*.mat"));
 	qDebug() << "filename=" << fileName;
-	if (getDecoder() != nullptr)
-		getDecoder()->LoadMatFile(fileName.toStdString());
-	if (getDecoder()->LoadMatFile(fileName.toStdString())) {
-		ui.lblImportantMessage->setText("Paramter load succeeds");
+	if (fileName.isEmpty() || getDecoder() == nullptr) {
+		return;
+	}
+
+	const bool loaded = getDecoder()->LoadMatFile(fileName.toStdString());
+	if (loaded) {
+		ui.lblImportantMessage->setText("Parameter load succeeds");
 		decodeSource = fileName;
 		ui.editTrainSize->setText(QString::number(getDecoder()->decodeTrainSize));
-		ui.editLag->setText(QString::number(getDecoder()->lag+1));
+		ui.editLag->setText(QString::number(getDecoder()->lag));
+		ui.ckbBias->setChecked(getDecoder()->bias);
+		ui.editLag->setDisabled(true);
+		ui.ckbBias->setDisabled(true);
+		binWithTap.zeros(MaxChannelCount * getDecoder()->lag + getDecoder()->bias);
 		qobject_cast<QStandardItemModel *>(ui.feedBackMethod->model())->item(1)->setEnabled(true);
 		qobject_cast<QStandardItemModel *>(ui.feedBackMethod->model())->item(2)->setEnabled(true);
+		ui.btnTrain->setDisabled(true);
+		ui.btnDecodeStart->setDisabled(false);
+		ui.btnDecodeFromFile->setDisabled(false);
 	}
-	else
-		ui.lblImportantMessage->setText("Paramter load fails");
+	else {
+		ui.lblImportantMessage->setText("Parameter load fails");
+		ui.btnDecodeStart->setDisabled(true);
+	}
 	ui.lblTrainingState->setText("Ready");
-	ui.btnTrain->setDisabled(true);
-	ui.btnDecodeStart->setDisabled(false);
-	ui.btnDecodeFromFile->setDisabled(false);
 }
 
 void PlaxRat::on_btnDecodeFromFile_clicked()
@@ -134,7 +159,9 @@ void PlaxRat::on_btnDecodeFromFile_clicked()
 		isDecodeFromFile = true;
 		decodeFromFileName =fileName;
 		if (thrdTimerId == 0) {
-			thrdPlexon = new ThreadPlexon{this};
+			if (thrdPlexon == nullptr) {
+				thrdPlexon = new ThreadPlexon{this};
+			}
 			////thrdPlexon->setRecord(bRecord);
 			//tester = new MatTester(this);
 			//tester->virtualConnect();
@@ -148,8 +175,16 @@ void PlaxRat::on_btnDecodeFromFile_clicked()
 
 void PlaxRat::on_btnPause_clicked()
 {
+	if (thrdTimerId != 0) {
+		killTimer(thrdTimerId);
+		thrdTimerId = 0;
+	}
 	if (thrdPlexon != nullptr) {
 		thrdPlexon->stop();
+		if (thrdPlexon->isRunning()) {
+			thrdPlexon->wait();
+		}
+		delete thrdPlexon;
 		thrdPlexon = nullptr;
 	}
 	ui.btnConnect->setDisabled(false);
@@ -180,7 +215,7 @@ void PlaxRat::on_btnStartTrial_pressed()// high cue
 	}
 	
 	cntTotalTrial++;
-	//TODO: 给行为箱发数据
+	//TODO: ???????????
 
 
 	//qDebug() << numDOCards;
@@ -195,14 +230,10 @@ void PlaxRat::on_btnStartTrial_pressed()// high cue
 	
 	//2022-12-10 SONG, Zhiwei
 	if (trialType == BC_two_lever|| trialType == MC) {
-		PL_DOPulseBit(deviceNum, 5, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 6, 1);
+		sendDigitalPulseSequence(deviceNum, 5, 1, 10, 6, 1);
 	}
 	else {
-		PL_DOPulseBit(deviceNum, 5, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 2, 1);
+		sendDigitalPulseSequence(deviceNum, 5, 1, 10, 2, 1);
 	}
 
 	// 2017-10-23 Zhang Xiang added
@@ -244,14 +275,10 @@ void PlaxRat::on_btnStartTrial2_pressed()// low
 	cntTotalTrial++;
 	//2022-12-10 SONG, Zhiwei
 	if (trialType == BC_two_lever||trialType == MC) {
-		PL_DOPulseBit(deviceNum, 5, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 4, 1);
+		sendDigitalPulseSequence(deviceNum, 5, 1, 10, 4, 1);
 	}
 	else {
-		PL_DOPulseBit(deviceNum, 5, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 1, 1);
+		sendDigitalPulseSequence(deviceNum, 5, 1, 10, 1, 1);
 	}
 
 }
@@ -280,7 +307,7 @@ void PlaxRat::on_btnStartTrial3_pressed()
 	}
 
 	cntTotalTrial++;
-	//TODO: 给行为箱发数据
+	//TODO: ???????????
 
 
 	//qDebug() << numDOCards;
@@ -292,9 +319,7 @@ void PlaxRat::on_btnStartTrial3_pressed()
 	//qDebug() << "Send a digital pulse to channel 1";
 
 
-	PL_DOPulseBit(deviceNum, 5, 1);
-	PL_Sleep(10);
-	PL_DOPulseBit(deviceNum, 4, 1);
+	sendDigitalPulseSequence(deviceNum, 5, 1, 10, 4, 1);
 
 }
 
@@ -317,9 +342,7 @@ void PlaxRat::on_btnTestPush_pressed()
 			PL_DOInitDevice(deviceNum, false);
 			isOutputDeviceInitilized = true;
 		}
-		PL_DOPulseBit(deviceNum, 5, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 7, 1);
+		sendDigitalPulseSequence(deviceNum, 5, 1, 10, 7, 1);
 		pressLocker = true;
 		//qDebug() << "press";
 	}
@@ -339,9 +362,7 @@ void PlaxRat::on_btnTestPush_released()
 			PL_DOInitDevice(deviceNum, false);
 			isOutputDeviceInitilized = true;
 		}
-		PL_DOPulseBit(deviceNum, 5, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 8, 1);
+		sendDigitalPulseSequence(deviceNum, 5, 1, 10, 8, 1);
 		pressLocker = false;
 		//qDebug() << "release";
 	}
@@ -350,6 +371,13 @@ void PlaxRat::on_btnTestPush_released()
 void PlaxRat::on_ckbBias_toggled(bool toggled)
 {
 	qDebug() << "on_ckbBias_toggled" << ui.ckbBias->isChecked() << toggled;
+	if (getDecoder()->trainFinished && toggled != getDecoder()->bias) {
+		QSignalBlocker blocker(ui.ckbBias);
+		ui.ckbBias->setChecked(getDecoder()->bias);
+		ui.lblImportantMessage->setText(
+			"Bias cannot change after model training/loading");
+		return;
+	}
 	getDecoder()->bias = ui.ckbBias->isChecked();
 	binWithTap.zeros(MaxChannelCount*getDecoder()->lag + getDecoder()->bias);
 }
@@ -443,6 +471,20 @@ void PlaxRat::beep(int frequency, uint timeMSeconds)
 	auto asyncbeep = std::async(std::launch::async, [&] { Beep(frequency, timeMSeconds); });
 }
 
+void PlaxRat::sendDigitalPulseSequence(
+	unsigned int deviceNum,
+	int firstBit,
+	int firstValue,
+	int delayMs,
+	int secondBit,
+	int secondValue)
+{
+	PL_DOPulseBit(deviceNum, firstBit, firstValue);
+	QTimer::singleShot(delayMs, this, [=]() {
+		PL_DOPulseBit(deviceNum, secondBit, secondValue);
+	});
+}
+
 void PlaxRat::refreshTime(ulong newTime)
 {
 	//qDebug() << "In" << __func__ << newTime;
@@ -451,12 +493,18 @@ void PlaxRat::refreshTime(ulong newTime)
 	if (currTime <= 0) {
 		currTime = newTime;
 		paradigm->onMessage(Paradigm::refresh);
+		++binsSinceUiRefresh;
 	} else {
 		for (; currTime < newTime; currTime++) {
 			paradigm->onMessage(Paradigm::refresh);
+			++binsSinceUiRefresh;
+			if (binsSinceUiRefresh < PlaxTime::binsForMs(PlaxTime::UiRefreshMs)) {
+				continue;
+			}
 			displayer_X->refresh();
 			displayer_Y->refresh();
 			displayer_2D->refresh_2D();
+			binsSinceUiRefresh = 0;
 		}
 	}
 	refreshCounts();
@@ -472,13 +520,19 @@ void PlaxRat::refreshTime(ulong newTime, int toneFlag)
 	if (currTime <= 0) {
 		currTime = newTime;
 		paradigm->onMessage(Paradigm::refresh);
+		++binsSinceUiRefresh;
 	}
 	else {
 		for (; currTime < newTime; currTime++) {
 			paradigm->onMessage(Paradigm::refresh);
+			++binsSinceUiRefresh;
+			if (binsSinceUiRefresh < PlaxTime::binsForMs(PlaxTime::UiRefreshMs)) {
+				continue;
+			}
 			displayer_X->refresh(toneFlag);
 			displayer_Y->refresh(toneFlag);
 			displayer_2D->refresh_2D(toneFlag);
+			binsSinceUiRefresh = 0;
 		}
 	}
 	refreshCounts();
@@ -624,7 +678,9 @@ vec PlaxRat::getDecodeResult(vec input, uint newTime)
 void PlaxRat::timerEvent(QTimerEvent * event)
 {
 	if (event->timerId() == thrdTimerId){
-		thrdPlexon->inTick();
+		if (thrdPlexon != nullptr) {
+			thrdPlexon->inTick();
+		}
 	}
 	else {
 		QMainWindow::timerEvent(event);
@@ -634,14 +690,19 @@ void PlaxRat::timerEvent(QTimerEvent * event)
 void PlaxRat::on_btnConnect_clicked() 
 {
 	if (thrdTimerId == 0) {
-		thrdPlexon = new ThreadPlexon{ this };
+		if (thrdPlexon == nullptr) {
+			thrdPlexon = new ThreadPlexon{ this };
+		}
 		//thrdPlexon->setRecord(bRecord);
 		//tester=new MatTester(this);
 		//tester->virtualConnect();
-		thrdTimerId = startTimer(20);
+		thrdTimerId = startTimer(
+			PlaxTime::AcquisitionPollMs,
+			Qt::PreciseTimer);
 		//thrdPlexon->start();
 		ui.editResponseTime->setText(QString::number(thrdPlexon->trialResponseTimeLimit));		// 2021-10-06, add by SONG,Zhiwei
-		ui.editHoldingCueFreq->setText(QString::number(holdingCueFre));		// 2024-01-27, add by SONG,Zhiwei
+		ui.editHoldingCueFreq->setText(
+			QString::number(holdingCueFre * PlaxTime::BinMs));		// value shown in milliseconds
 
 	}
 	ui.btnConnect->setDisabled(true);
@@ -664,6 +725,13 @@ vec PlaxRat::GenerateOutputForKalman(int outputBinNumber)
 mat PlaxRat::GenerateOutputForKalman(int outputBinNumber, int tone, int HoldingTime)
 {
 	mat outputVec = mat(outputBinNumber, 2, fill::zeros); //2023-02-11 By SONG,Zhiwei, delete bias
+	const int postSuccessBins = PlaxTime::binsForMs(1000);
+	const int releaseTailBins = PlaxTime::binsForMs(500);
+	const double releaseOffsetBins = PlaxTime::binsForMs(200);
+	const double releaseScaleBins = PlaxTime::binsForMs(400);
+	const int reachingEndBin = outputBinNumber - HoldingTime - postSuccessBins;
+	const int holdingEndBin = outputBinNumber - postSuccessBins;
+	const int releaseEndBin = outputBinNumber - releaseTailBins;
 	//qDebug() << "cue is high or low" << tone;
 	//qDebug() << "length of the trial" << outputBinNumber;
 
@@ -673,15 +741,21 @@ mat PlaxRat::GenerateOutputForKalman(int outputBinNumber, int tone, int HoldingT
 	int sBin;
 	int rBin;
 	qDebug() << "Reaching";
-	for (iBin = 0; iBin < (outputBinNumber - HoldingTime - 10); iBin++) {
-		outputVec(iBin, 0) = 1 / (1 + exp(-(double(iBin) - (outputBinNumber - HoldingTime - 10 - 1) / 2) / (outputBinNumber - HoldingTime - 10 - 1) * 10));
+	for (iBin = 0; iBin < reachingEndBin; iBin++) {
+		const double reachingDenominator = reachingEndBin > 1
+			? static_cast<double>(reachingEndBin - 1)
+			: 1.0;
+		const double reachingArgument =
+			-(static_cast<double>(iBin) - reachingDenominator / 2.0) /
+			reachingDenominator * 10.0;
+		outputVec(iBin, 0) = 1 / (1 + exp(reachingArgument));
 		//outputVec(iBin, 2) = 1;
 		if (tone == 1) {
 			//qDebug() << "cue is high or low" << tone;
-			outputVec(iBin, 1) = 1 / (1 + exp(-(double(iBin) - (outputBinNumber - HoldingTime - 10 - 1) / 2) / (outputBinNumber - HoldingTime - 10 - 1) * 10));
+			outputVec(iBin, 1) = 1 / (1 + exp(reachingArgument));
 		}
 		else if (tone == 2) {
-			outputVec(iBin, 1) = -1 / (1 + exp(-(double(iBin) - (outputBinNumber - HoldingTime - 10 - 1) / 2) / (outputBinNumber - HoldingTime - 10 - 1) * 10));
+			outputVec(iBin, 1) = -1 / (1 + exp(reachingArgument));
 		}
 		if (isnan(outputVec(iBin, 0)))
 			outputVec(iBin, 0) = 0;
@@ -693,7 +767,7 @@ mat PlaxRat::GenerateOutputForKalman(int outputBinNumber, int tone, int HoldingT
 		//qDebug() << "The 2nd Dimension is" << outputVec(iBin, 1); // 2024-05-27
 	}
 	//qDebug() << "holding";
-	for (hBin = iBin; hBin < (outputBinNumber - 10); hBin++) {
+	for (hBin = iBin; hBin < holdingEndBin; hBin++) {
 		outputVec(hBin, 0) = 1;
 		//outputVec(hBin, 2) = 1;
 		if (tone == 1) {
@@ -712,17 +786,21 @@ mat PlaxRat::GenerateOutputForKalman(int outputBinNumber, int tone, int HoldingT
 		//qDebug() << "The 2nd Dimension is" << outputVec(hBin, 1); // 2024-05-27
 	}
 	//qDebug() << "Release";
-	for (sBin = hBin; sBin < outputBinNumber - 5; sBin++) {
-		outputVec(sBin, 0) = 1 / (1 + exp(((double(sBin) - outputBinNumber + 5 + 1) + 2) / 4 * 10));
+	for (sBin = hBin; sBin < releaseEndBin; sBin++) {
+		const double releaseArgument =
+			((static_cast<double>(sBin) - outputBinNumber +
+				releaseTailBins + 1.0) + releaseOffsetBins) /
+			releaseScaleBins * 10.0;
+		outputVec(sBin, 0) = 1 / (1 + exp(releaseArgument));
 		//outputVec(sBin, 2) = 1;
 		//qDebug() << "Time" << iBin << "The 1st Dimension is" << outputVec(0, iBin);
 		if (tone == 1) {
 			//qDebug() << "cue is high or low" << tone;
-			outputVec(sBin, 1) = 1 / (1 + exp(((double(sBin) - outputBinNumber + 5 + 1) + 2) / 4 * 10));
+			outputVec(sBin, 1) = 1 / (1 + exp(releaseArgument));
 			//qDebug() << "The 2nd Dimension is" << outputVec(1, iBin);
 		}
 		else if (tone == 2) {
-			outputVec(sBin, 1) = -1 / (1 + exp(((double(sBin) - outputBinNumber + 5 + 1) + 2) / 4 * 10));
+			outputVec(sBin, 1) = -1 / (1 + exp(releaseArgument));
 			//qDebug() << "The 2nd Dimension is" << outputVec(1, iBin);
 		}
 		if (isnan(outputVec(sBin, 0)))
@@ -754,10 +832,16 @@ mat PlaxRat::GenerateOutputForKalman(int outputBinNumber, int tone, int HoldingT
 
 void PlaxRat::on_editLag_editingFinished()
 {
-	if (ui.editLag->text().isEmpty())
-		getDecoder()->lag = 8;
-	else
-		getDecoder()->lag = ui.editLag->text().toInt();
+	const int requestedLag = ui.editLag->text().isEmpty()
+		? PlaxTime::DecoderLagBins
+		: ui.editLag->text().toInt();
+	if (requestedLag != PlaxTime::DecoderLagBins) {
+		ui.lblImportantMessage->setText(
+			QString("10 ms decoding requires lag %1")
+				.arg(PlaxTime::DecoderLagBins));
+	}
+	getDecoder()->lag = PlaxTime::DecoderLagBins;
+	ui.editLag->setText(QString::number(getDecoder()->lag));
 	binWithTap.zeros(MaxChannelCount*getDecoder()->lag + getDecoder()->bias);
 	qDebug() << "The bias is set to be" << getDecoder()->bias;// 2023-02-11 SONG,Zhiwei
 	qDebug() << "The lag is set to be" << getDecoder()->lag;
@@ -1131,12 +1215,15 @@ void PlaxRat::on_editHoldingCueFreq_editingFinished()
 {
 	if (ui.editHoldingCueFreq->text().isEmpty())
 	{
-		holdingCueFre = 2;
+		holdingCueFre = PlaxTime::binsForMs(200);
 	}
 	else
 	{
-		holdingCueFre = ui.editHoldingCueFreq->text().toDouble();
+		holdingCueFre = PlaxTime::binsForMs(
+			ui.editHoldingCueFreq->text().toInt());
 	}
+	ui.editHoldingCueFreq->setText(
+		QString::number(holdingCueFre * PlaxTime::BinMs));
 }
 
 // addedn
@@ -1144,11 +1231,15 @@ void PlaxRat::on_editHoldingCueFreq_editingFinished()
 void PlaxRat::on_editRestDuration_editingFinished()
 {
 	if (ui.editRestDuration->text().isEmpty())
-		thrdPlexon->restDuration = 20;
+		thrdPlexon->restDuration = PlaxTime::binsForMs(2000);
 	else {
-		thrdPlexon->restDuration = ui.editRestDuration->text().toInt();
-		getRecordStream() << getCurrTime() << "  RestDuration " << QString::number(thrdPlexon->restDuration) << endl;
+		thrdPlexon->restDuration = PlaxTime::binsForMs(
+			ui.editRestDuration->text().toInt());
+		getRecordStream() << getCurrTime() << "  RestDurationMs "
+			<< QString::number(thrdPlexon->restDuration * PlaxTime::BinMs) << endl;
 	}
+	ui.editRestDuration->setText(
+		QString::number(thrdPlexon->restDuration * PlaxTime::BinMs));
 }
 
 void PlaxRat::on_btnTrain_clicked()
@@ -1168,8 +1259,10 @@ void PlaxRat::on_btnDecodeStart_pressed()
 		ui.btnDecodeStart->setDisabled(false);
 		ui.btnDecodeFromFile->setDisabled(false);
 	}
-	else
+	else {
 		ui.lblImportantMessage->setText("Training is not finished");
+		return;
+	}
 	setStartToTrainSignal(false);
 	ui.btnDecodeStart->setDisabled(true);
 	ui.btnDecodeStop->setDisabled(false);
@@ -1198,6 +1291,8 @@ void PlaxRat::on_btnSaveDescription_clicked()
 	getRecordStreamOfDescription() << "Decode type: " << decodeSource << endl;
 	getRecordStreamOfDescription() << "Training trial number: "<<ui.editTrainSize->text()<<endl;
 	getRecordStreamOfDescription() << "Lag number: "<<ui.editLag->text()<<endl;
+	getRecordStreamOfDescription() << "Bin width (ms): " << PlaxTime::BinMs << endl;
+	getRecordStreamOfDescription() << "Decoder history (ms): " << PlaxTime::DecoderHistoryMs << endl;
 	getRecordStreamOfDescription() << "Bias: "<<getDecoder()->bias<<endl;
 }
 
@@ -1357,7 +1452,8 @@ void PlaxRat::on_feedBackMethod_currentTextChanged()
 		ui.RestCenterX->setText(QString::number(thrdPlexon->RestCenterX));
 		ui.RestCenterY->setText(QString::number(thrdPlexon->RestCenterY));
 		ui.RestRadius->setText(QString::number(thrdPlexon->RestRadius));
-		ui.editRestDuration->setText(QString::number(thrdPlexon->restDuration));
+		ui.editRestDuration->setText(
+			QString::number(thrdPlexon->restDuration * PlaxTime::BinMs));
 		ui.editManualBias_1->setText(QString::number(thrdPlexon->manualBias_1));
 		ui.editManualBias_2->setText(QString::number(thrdPlexon->manualBias_2));
 		ui.editPlotTime->setText(QString::number(displayer_2D->PlotTime));  //20210312 sx
@@ -1377,7 +1473,8 @@ void PlaxRat::on_feedBackMethod_currentTextChanged()
 		getRecordStream() << getCurrTime() << "  RestCenterX " << QString::number(thrdPlexon->RestCenterX) << endl;
 		getRecordStream() << getCurrTime() << "  RestCenterY " << QString::number(thrdPlexon->RestCenterY) << endl;
 		getRecordStream() << getCurrTime() << "  RestRadius " << QString::number(thrdPlexon->RestRadius) << endl;
-		getRecordStream() << getCurrTime() << "  RestDuration " << QString::number(thrdPlexon->restDuration) << endl;
+		getRecordStream() << getCurrTime() << "  RestDurationMs "
+			<< QString::number(thrdPlexon->restDuration * PlaxTime::BinMs) << endl;
 		getRecordStream() << getCurrTime() << "  MaunalBias_1 " << QString::number(thrdPlexon->manualBias_1) << endl;
 		getRecordStream() << getCurrTime() << "  MaunalBias_2 " << QString::number(thrdPlexon->manualBias_2) << endl;
 		getRecordStream() << getCurrTime() << "  PlotTime " << QString::number(displayer_2D->PlotTime) << endl;  //20210312 sx
@@ -1474,9 +1571,7 @@ void PlaxRat::on_btnChangeRetryFlag_pressed() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 4, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 8, 1);
+		sendDigitalPulseSequence(deviceNum, 4, 1, 10, 8, 1);
 	}
 }
 
@@ -1499,9 +1594,7 @@ void PlaxRat::on_pushButtonIncreaseTrialTime_clicked() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 3, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 6, 1);
+		sendDigitalPulseSequence(deviceNum, 3, 1, 10, 6, 1);
 	}
 }
 
@@ -1524,9 +1617,7 @@ void PlaxRat::on_pushButtonDecreaseTrialTime_clicked() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 3, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 7, 1);
+		sendDigitalPulseSequence(deviceNum, 3, 1, 10, 7, 1);
 	}
 }
 
@@ -1549,9 +1640,7 @@ void PlaxRat::on_pushButtonIncreaseWaitTimeMax_pressed() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 3, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 8, 1);
+		sendDigitalPulseSequence(deviceNum, 3, 1, 10, 8, 1);
 	}
 }
 
@@ -1574,9 +1663,7 @@ void PlaxRat::on_pushButtonDecreaseWaitTimeMax_pressed() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 4, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 5, 1);
+		sendDigitalPulseSequence(deviceNum, 4, 1, 10, 5, 1);
 	}
 }
 
@@ -1599,9 +1686,7 @@ void PlaxRat::on_pushButtonIncreaseWaitTimeMin_pressed() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 4, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 6, 1);
+		sendDigitalPulseSequence(deviceNum, 4, 1, 10, 6, 1);
 	}
 }
 
@@ -1624,9 +1709,7 @@ void PlaxRat::on_pushButtonDecreaseWaitTimeMin_pressed() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 4, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 7, 1);
+		sendDigitalPulseSequence(deviceNum, 4, 1, 10, 7, 1);
 	}
 }
 
@@ -1722,9 +1805,7 @@ void PlaxRat::on_btnIncreaseLowHoldTime_pressed() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 3, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 1, 1);
+		sendDigitalPulseSequence(deviceNum, 3, 1, 10, 1, 1);
 	}
 }
 
@@ -1747,9 +1828,7 @@ void PlaxRat::on_btnDecreaseLowHoldTime_pressed() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 3, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 2, 1);
+		sendDigitalPulseSequence(deviceNum, 3, 1, 10, 2, 1);
 	}
 }
 
@@ -1772,9 +1851,7 @@ void PlaxRat::on_btnIncreaseHighHoldTime_pressed() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 3, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 4, 1);
+		sendDigitalPulseSequence(deviceNum, 3, 1, 10, 4, 1);
 	}
 }
 
@@ -1797,9 +1874,7 @@ void PlaxRat::on_btnDecreaseHighHoldTime_pressed() {
 	}
 	if (!thrdPlexon->trialStartFlag)
 	{
-		PL_DOPulseBit(deviceNum, 3, 1);
-		PL_Sleep(10);
-		PL_DOPulseBit(deviceNum, 5, 1);
+		sendDigitalPulseSequence(deviceNum, 3, 1, 10, 5, 1);
 	}
 }
 // 2022-12-11 add end
