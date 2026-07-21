@@ -219,11 +219,7 @@ bool PlexonConnector::receivePlexonSignal()
 	numEvents = MAX_MAP_EVENTS_PER_READ;
 	double responseTime; // 2022-10-02, added by SONG, Zhiwei
 	//** call the Server to get all the MAP events since the last time we called PL_GetTimeStampStructures
-	PL_GetTimeStampStructuresEx2(&numEvents, pEventBuffer, 0);
-	if (numEvents == MAX_MAP_EVENTS_PER_READ) {
-		qWarning() << "Plexon event buffer filled completely;"
-			<< "events may be delayed or lost.";
-	}
+	PL_GetTimeStampStructures(&numEvents, pEventBuffer); // 2017-11-01 ZX comment
 
 	//      Copies the timestamp structures that the server transferred to MMF since
 	//          any of the PL_GetTimeStamp* or PL_GetWave* was called last time
@@ -706,9 +702,6 @@ void PlexonConnector::receivePlaybackSignal(QString filename)
 	int count = 0;
 	while (fin.getline(str, LINE_LENGTH, ' '))
 	{
-		if (parent->isStopped()) {
-			break;
-		}
 		if (count < MaxChannelCount) {
 			channelFiringRate(count) = atof(str);
 			count++;

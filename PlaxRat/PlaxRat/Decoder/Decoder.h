@@ -4,7 +4,6 @@
 #include <armadillo>
 #include <mat.h>
 #include <fstream>
-#include "../Plexon/Timebase.h"
 using namespace std;
 using namespace arma;
 
@@ -37,15 +36,10 @@ public:
 	static mat read_mat(MATFile *pMat, const char *name)
 	{
 		mxArray *pArray = matGetVariable(pMat, name);
-		if (pArray == nullptr) {
-			qWarning() << "Missing MAT variable:" << name;
-			return mat();
-		}
 		int M = mxGetM(pArray);
 		int N = mxGetN(pArray);
 		double *pdata = (double*)mxGetData(pArray);
-		mat X(pdata, M, N, true);
-		mxDestroyArray(pArray);
+		mat X(pdata, M, N);
 		return X;
 	}
 
@@ -63,7 +57,7 @@ protected:
 
 // parameters
 public:
-	int lag = PlaxTime::DecoderLagBins;
+	int lag = 8;
 	bool bias = false; // 2023-02-11 change here
 	bool trainFinished = false;
 	int decodeTrainSize = 0;

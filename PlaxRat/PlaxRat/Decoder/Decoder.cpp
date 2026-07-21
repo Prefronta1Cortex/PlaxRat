@@ -15,10 +15,9 @@ bool Decoder::LoadMatFile(const std::string & filename)
 	}
 	bool isSuccess = LoadFromMat(pMat);
 	//qDebug() << "LoadFromMat" << isSuccess;
-	trainFinished = isSuccess;
-	if (isSuccess) {
-		resetInputVec();
-	}
+	//bTrained = isSuccess;
+	trainFinished = true;
+	resetInputVec();
 	matClose(pMat);
 	return isSuccess;
 }

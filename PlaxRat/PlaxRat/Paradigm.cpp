@@ -153,7 +153,7 @@ void StateHolding::execute()
 	//qDebug() << "holdCnt";
 	//qDebug() << paradigm->holdCnt;
 	//paradigm->holdCnt++;
-	if (paradigm->holdCnt >= paradigm->ctx->holdingCueFre) //2024-01-27 added by SONG, Zhiwei
+	if (paradigm->holdCnt == paradigm->ctx->holdingCueFre) //2024-01-27 added by SONG, Zhiwei
 		paradigm->holdCnt = 0;
 
 	// 2022-03-31, change volume based on rdRatio, add by TAN, Jieyuan
@@ -233,7 +233,7 @@ QString StateHolding::getStateName() const
 void StateReaching::execute()
 {
 	paradigm->reachCnt++;
-	if (paradigm->reachCnt >= PlaxTime::binsForMs(200))
+	if (paradigm->reachCnt == 2)
 		paradigm->reachCnt = 0;
 
 	if (paradigm->ctx->getTrialStartFlag() && paradigm->reachCnt>0)

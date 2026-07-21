@@ -7,6 +7,7 @@
 #include <PlexDO.h>
 #pragma comment(lib,"lib/PlexDO.lib")
 #include <time.h> // 2022-10-15, added by SONG, Zhiwei
+#include "Timebase.h"
 ThreadPlexon::ThreadPlexon(PlaxRat *parent) : QThread(), stopped(false), mutex(),mutex2(), bRecord(false), parent(parent) 
 {
 	connector = new PlexonConnector{ this };
@@ -21,12 +22,7 @@ void ThreadPlexon::setToneFlag(int inputFlag)
 
 ThreadPlexon::~ThreadPlexon() 
 {
-	stop();
-	if (isRunning()) {
-		wait();
-	}
-	delete connector;
-	connector = nullptr;
+	
 }
 
 void ThreadPlexon::record(const QString & message) 
@@ -44,7 +40,7 @@ void ThreadPlexon::run()
 		msleep(PlaxTime::AcquisitionPollMs);
 	}
 
-	if (parent->isDecodeFromFile && !isStopped())
+	if (parent->isDecodeFromFile)
 	{
 		//qDebug() << "here "<<filename;
 		QMutexLocker locker(&mutex);
@@ -169,7 +165,7 @@ void ThreadPlexon::refreshBin(uint newTime,int toneFlag)
 		}
 		// add end
 		if (successfulTrialIndicator) {		// Concatenate the temp input and the output
-			if (parent->tempAfterSuccess < PlaxTime::binsForMs(1000)) {
+			if (parent->tempAfterSuccess < 10) {
 				parent->concatenateTempInput(parent->getBinWithTap());
 				parent->tempAfterSuccess++;
 				//parent->changeTrainedNumber(parent->getTrialNum());
@@ -270,42 +266,54 @@ void ThreadPlexon::refreshBin(uint newTime,int toneFlag)
 			if (pow((decodeResult[0] - HighCenterX), 2) + pow((decodeResult[1] - HighCenterY), 2) <= pow(HighRadius, 2) && !highpressLocker) {
 				qDebug() << "this is high press";
 				qDebug() << decodeResult[0] << " " << decodeResult[1] << " " << HighCenterX << " " << HighCenterY << " " << HighRadius;
-				parent->sendDigitalPulseSequence(deviceNum, 6, 1, 10, 2, 1);
+				PL_DOPulseBit(deviceNum, 6, 1);
+				PL_Sleep(10);
+				PL_DOPulseBit(deviceNum, 2, 1);
 				highpressLocker = true;
 			}
 
 			if (pow((decodeResult[0] - LowCenterX), 2) + pow((decodeResult[1] - LowCenterY), 2) <= pow(LowRadius, 2) && !lowpressLocker) {
 				qDebug() << "this is low press";
 				qDebug() << decodeResult[0] << " " << decodeResult[1] << " " << LowCenterX << " " << LowCenterY << " " << LowRadius;
-				parent->sendDigitalPulseSequence(deviceNum, 6, 1, 10, 1, 1);
+				PL_DOPulseBit(deviceNum, 6, 1);
+				PL_Sleep(10);
+				PL_DOPulseBit(deviceNum, 1, 1);
 				lowpressLocker = true;
 			}
 
 			if (pow((decodeResult[0] - MiddleCenterX), 2) + pow((decodeResult[1] - MiddleCenterY), 2) <= pow(MiddleRadius, 2) && !middlepressLocker) {
 				qDebug() << "this is third press";
 				qDebug() << decodeResult[0] << " " << decodeResult[1] << " " << MiddleCenterX << " " << MiddleCenterY << " " << MiddleRadius;
-				parent->sendDigitalPulseSequence(deviceNum, 6, 1, 10, 4, 1); //plexonIn 2021-01-16
+				PL_DOPulseBit(deviceNum, 6, 1); //plexonIn 2021-01-16
+				PL_Sleep(10);
+				PL_DOPulseBit(deviceNum, 4, 1);
 				middlepressLocker = true;
 			}
 
 			//
 			if (pow((decodeResult[0] - HighCenterX), 2) + pow((decodeResult[1] - HighCenterY), 2) > pow(HighRadius, 2) && highpressLocker) {
 				qDebug() << "high release";
-				parent->sendDigitalPulseSequence(deviceNum, 7, 1, 6, 2, 1);
+				PL_DOPulseBit(deviceNum, 7, 1);
+				PL_Sleep(6);
+				PL_DOPulseBit(deviceNum, 2, 1);
 				highpressLocker = false;
 			}
 
 			if (pow((decodeResult[0] - LowCenterX), 2) + pow((decodeResult[1] - LowCenterY), 2) > pow(LowRadius, 2) && lowpressLocker) {
 				qDebug() << "low release";
-				parent->sendDigitalPulseSequence(deviceNum, 7, 1, 6, 1, 1);
+				PL_DOPulseBit(deviceNum, 7, 1);
+				PL_Sleep(6);
 				lowpressLocker = false;
+				PL_DOPulseBit(deviceNum, 1, 1); //2020-11-05 SX added
 			}
 
 
 			if (pow((decodeResult[0] - MiddleCenterX), 2) + pow((decodeResult[1] - MiddleCenterY), 2) > pow(MiddleRadius, 2) && middlepressLocker) {
 				qDebug() << "third release";
-				parent->sendDigitalPulseSequence(deviceNum, 7, 1, 6, 4, 1);
+				PL_DOPulseBit(deviceNum, 7, 1);
+				PL_Sleep(6);
 				middlepressLocker = false;
+				PL_DOPulseBit(deviceNum, 4, 1); //2021-01-16 SX added
 			}
 
 			// 2022-3-31, Add reaching state, add by TAN, Jieyuan
@@ -445,21 +453,27 @@ void ThreadPlexon::refreshBin(uint newTime,int toneFlag)
 			//}
 			if (pow((decodeResult[0] - HighCenterX), 2) + pow((decodeResult[1] - HighCenterY), 2) > pow(HighRadius, 2) && highpressLocker) {
 				qDebug() << "high release start flag0";
-				parent->sendDigitalPulseSequence(deviceNum, 7, 1, 6, 2, 1);
+				PL_DOPulseBit(deviceNum, 7, 1);
+				PL_Sleep(6);
+				PL_DOPulseBit(deviceNum, 2, 1);
 				highpressLocker = false;
 			}
 
 			if (pow((decodeResult[0] - LowCenterX), 2) + pow((decodeResult[1] - LowCenterY), 2) > pow(LowRadius, 2) && lowpressLocker) {
 				qDebug() << "low release start flag0";
-				parent->sendDigitalPulseSequence(deviceNum, 7, 1, 6, 1, 1);
+				PL_DOPulseBit(deviceNum, 7, 1);
+				PL_Sleep(6);
 				lowpressLocker = false;
+				PL_DOPulseBit(deviceNum, 1, 1); //2020-11-05 SX added
 			}
 
 
 			if (pow((decodeResult[0] - MiddleCenterX), 2) + pow((decodeResult[1] - MiddleCenterY), 2) > pow(MiddleRadius, 2) && middlepressLocker) {
 				qDebug() << "third release start flag0";
-				parent->sendDigitalPulseSequence(deviceNum, 7, 1, 6, 4, 1);
+				PL_DOPulseBit(deviceNum, 7, 1);
+				PL_Sleep(6);
 				middlepressLocker = false;
+				PL_DOPulseBit(deviceNum, 4, 1); //2021-01-16 SX added
 			}
 
 
@@ -516,13 +530,17 @@ void ThreadPlexon::refreshBin(uint newTime,int toneFlag)
 			}
 
 			if (pow((decodeResult[0] - HighCenterX), 2) + pow((decodeResult[1] - HighCenterY), 2) > pow(HighRadius, 2) && highpressLocker) {
-				parent->sendDigitalPulseSequence(deviceNum, 3, 1, 10, 5, 1);
+				PL_DOPulseBit(deviceNum, 3, 1);
+				PL_Sleep(10);
+				PL_DOPulseBit(deviceNum, 5, 1);
 				highpressLocker = false;
 
 			}
 			if (pow((decodeResult[0] - LowCenterX), 2) + pow((decodeResult[1] - LowCenterY), 2) > pow(LowRadius, 2) && lowpressLocker) {
-				parent->sendDigitalPulseSequence(deviceNum, 4, 2, 10, 5, 1);
+				PL_DOPulseBit(deviceNum, 4, 2);
+				PL_Sleep(10);
 				lowpressLocker = false;
+				PL_DOPulseBit(deviceNum, 5, 1); //2020-11-05 SX added
 			}
 
 			// 2021-8-20, Add reaching state, add by TAN, Jieyuan

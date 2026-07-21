@@ -5,7 +5,6 @@
 #include <QtCore>
 #include "paradigm.h"
 #include <QTextStream>
-#include "Timebase.h"
 
 class PlaxRat;
 class PlexonConnector;
@@ -84,7 +83,7 @@ public:
 	double RestCenterX = -0.3, RestCenterY = 0, RestRadius = 0.7;
 	double MiddleCenterX = 1.3, MiddleCenterY = 0, MiddleRadius = 0.6;
 	int restCnt = 0;
-	int restDuration = PlaxTime::binsForMs(1000);
+	int restDuration = 10;
 	bool isDecodeStart();
 	double manualBias_1 = 0;
 	double manualBias_2 = 0;
