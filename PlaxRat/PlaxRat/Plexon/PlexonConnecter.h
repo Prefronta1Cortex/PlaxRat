@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <queue>
@@ -16,6 +17,8 @@ class ThreadPlexon;
 
 class PlexonConnector
 {
+	using SteadyClock = std::chrono::steady_clock;
+
 	PL_Event*  pEventBuffer;     //** buffer in which the Server will return MAP events
 	int           numEvents;           //** number of MAP events returned from the Server
 	int           NumNIDAQSamples;        //** number of samples within a NIDAQ sample block 
@@ -40,11 +43,14 @@ class PlexonConnector
 	std::queue <int> leverQueue;
 	std::queue <int> actionQueue;
 	std::uint64_t ticksPerBin = 0;
+	std::uint64_t clockStartTicks = 0;
+	std::uint64_t latestObservedTicks = 0;
 	std::uint64_t firstOutputBin = 0;
 	std::uint64_t nextBinToEmit = 0;
-	std::uint64_t newestSeenBin = 0;
 	bool binnerStarted = false;
 	unsigned int lateSpikeCount = 0;
+	int deliveryGuardMs = PlaxTime::DeliveryGuardMs;
+	SteadyClock::time_point clockStartTime;
 	std::map<std::uint64_t, vec> pendingSpikeBins;
 
 public:

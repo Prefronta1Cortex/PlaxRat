@@ -51,8 +51,18 @@ PlexonConnector::PlexonConnector(ThreadPlexon *thread) : channelFiringRate(MaxCh
 	qDebug() << "Bin width =" << PlaxTime::BinMs << "ms";
 	qDebug() << "Timestamp ticks per bin ="
 		<< static_cast<qulonglong>(ticksPerBin);
+	const int sdkPollingIntervalMs = PL_GetPollingInterval();
+	if (sdkPollingIntervalMs > 0) {
+		const int sdkSafeGuardMs =
+			sdkPollingIntervalMs + PlaxTime::BinMs;
+		if (sdkSafeGuardMs > deliveryGuardMs) {
+			deliveryGuardMs = sdkSafeGuardMs;
+		}
+	}
 	qDebug() << "Plexon SDK polling interval ="
-		<< PL_GetPollingInterval();
+		<< sdkPollingIntervalMs;
+	qDebug() << "Bin finalization guard ="
+		<< deliveryGuardMs << "ms";
 
 	//** get the NIDAQ sampling rate
 	PL_GetSlowInfo(&NIDAQSampleRate, Dummy, Dummy); //** last two params are unused here
@@ -101,6 +111,9 @@ unsigned int PlexonConnector::getSessionBin(std::uint64_t absoluteBin) const
 
 void PlexonConnector::initializeBinner(std::uint64_t firstEventTicks)
 {
+	clockStartTicks = firstEventTicks;
+	latestObservedTicks = firstEventTicks;
+
 	// If acquisition starts partway through a bin, skip only that partial
 	// bin. An event exactly on a boundary belongs to a complete first bin.
 	const std::uint64_t firstEventBin = firstEventTicks / ticksPerBin;
@@ -108,9 +121,9 @@ void PlexonConnector::initializeBinner(std::uint64_t firstEventTicks)
 		? firstEventBin
 		: firstEventBin + 1;
 	nextBinToEmit = firstOutputBin;
-	newestSeenBin = firstEventBin;
 	pendingSpikeBins.clear();
 	channelFiringRate.zeros();
+	clockStartTime = SteadyClock::now();
 	binnerStarted = true;
 
 	qDebug() << "10 ms binner started at Plexon bin"
@@ -166,11 +179,40 @@ void PlexonConnector::flushCompletedBins()
 		return;
 	}
 
-	// The newest observed Plexon bin remains open. Every earlier bin is
-	// complete under the same timestamp-order assumption as the legacy code.
-	// Missing map entries become zero vectors when a later event arrives.
+	const SteadyClock::duration elapsed =
+		SteadyClock::now() - clockStartTime;
+	const std::chrono::seconds wholeSeconds =
+		std::chrono::duration_cast<std::chrono::seconds>(elapsed);
+	const std::chrono::nanoseconds remainingNanoseconds =
+		std::chrono::duration_cast<std::chrono::nanoseconds>(
+			elapsed - wholeSeconds);
+	const std::uint64_t elapsedTicks =
+		static_cast<std::uint64_t>(wholeSeconds.count()) *
+			static_cast<std::uint64_t>(plexonRate)
+		+ static_cast<std::uint64_t>(remainingNanoseconds.count()) *
+			static_cast<std::uint64_t>(plexonRate) / 1000000000ULL;
+	const std::uint64_t clockEstimatedTicks =
+		clockStartTicks + elapsedTicks;
+	const std::uint64_t estimatedPlexonTicks =
+		clockEstimatedTicks > latestObservedTicks
+		? clockEstimatedTicks
+		: latestObservedTicks;
+	const std::uint64_t guardTicks =
+		static_cast<std::uint64_t>(plexonRate) *
+			deliveryGuardMs / 1000ULL;
+
+	if (estimatedPlexonTicks <= guardTicks) {
+		return;
+	}
+
+	const std::uint64_t watermarkTicks =
+		estimatedPlexonTicks - guardTicks;
+	const std::uint64_t firstIncompleteBin =
+		watermarkTicks / ticksPerBin;
+
+	// Emit every safe bin. Missing map entries become zero vectors.
 	int emittedBins = 0;
-	while (nextBinToEmit < newestSeenBin &&
+	while (nextBinToEmit < firstIncompleteBin &&
 		emittedBins < PlaxTime::MaxBinsPerFlush) {
 		emitOneBin(nextBinToEmit);
 		++nextBinToEmit;
@@ -207,10 +249,13 @@ bool PlexonConnector::receivePlexonSignal()
 	//** step through the array of MAP events, displaying only the NIDAQ samples
 	for (int eventIndex = 0; eventIndex < numEvents; eventIndex++) {
 		PL_Event &event = pEventBuffer[eventIndex];
-		const std::uint64_t absoluteBin = getAbsoluteBin(event);
-		if (absoluteBin > newestSeenBin) {
-			newestSeenBin = absoluteBin;
+		const std::uint64_t eventTicks = getTimestampTicks(event);
+		if (eventTicks > latestObservedTicks) {
+			latestObservedTicks = eventTicks;
+			clockStartTicks = eventTicks;
+			clockStartTime = SteadyClock::now();
 		}
+		const std::uint64_t absoluteBin = getAbsoluteBin(event);
 		const unsigned int eventTime = getSessionBin(absoluteBin);
 		//int is = pEventBuffer[eventIndex].Type;
 		//qDebug() << "Event type in Int" << is;
