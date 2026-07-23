@@ -51,18 +51,8 @@ PlexonConnector::PlexonConnector(ThreadPlexon *thread) : channelFiringRate(MaxCh
 	qDebug() << "Bin width =" << PlaxTime::BinMs << "ms";
 	qDebug() << "Timestamp ticks per bin ="
 		<< static_cast<qulonglong>(ticksPerBin);
-	const int sdkPollingIntervalMs = PL_GetPollingInterval();
-	if (sdkPollingIntervalMs > 0) {
-		const int sdkSafeGuardMs =
-			sdkPollingIntervalMs + PlaxTime::BinMs;
-		if (sdkSafeGuardMs > deliveryGuardMs) {
-			deliveryGuardMs = sdkSafeGuardMs;
-		}
-	}
 	qDebug() << "Plexon SDK polling interval ="
-		<< sdkPollingIntervalMs;
-	qDebug() << "Bin finalization guard ="
-		<< deliveryGuardMs << "ms";
+		<< PL_GetPollingInterval();
 
 	//** get the NIDAQ sampling rate
 	PL_GetSlowInfo(&NIDAQSampleRate, Dummy, Dummy); //** last two params are unused here
@@ -111,9 +101,6 @@ unsigned int PlexonConnector::getSessionBin(std::uint64_t absoluteBin) const
 
 void PlexonConnector::initializeBinner(std::uint64_t firstEventTicks)
 {
-	clockStartTicks = firstEventTicks;
-	latestObservedTicks = firstEventTicks;
-
 	// If acquisition starts partway through a bin, skip only that partial
 	// bin. An event exactly on a boundary belongs to a complete first bin.
 	const std::uint64_t firstEventBin = firstEventTicks / ticksPerBin;
@@ -121,9 +108,9 @@ void PlexonConnector::initializeBinner(std::uint64_t firstEventTicks)
 		? firstEventBin
 		: firstEventBin + 1;
 	nextBinToEmit = firstOutputBin;
+	newestSeenBin = firstEventBin;
 	pendingSpikeBins.clear();
 	channelFiringRate.zeros();
-	plexonClock.start();
 	binnerStarted = true;
 
 	qDebug() << "10 ms binner started at Plexon bin"
@@ -179,33 +166,11 @@ void PlexonConnector::flushCompletedBins()
 		return;
 	}
 
-	const std::uint64_t elapsedTicks =
-		static_cast<std::uint64_t>(plexonClock.nsecsElapsed()) *
-		static_cast<std::uint64_t>(plexonRate) / 1000000000ULL;
-	const std::uint64_t clockEstimatedTicks =
-		clockStartTicks + elapsedTicks;
-	const std::uint64_t estimatedPlexonTicks =
-		clockEstimatedTicks > latestObservedTicks
-		? clockEstimatedTicks
-		: latestObservedTicks;
-	const std::uint64_t guardTicks =
-		static_cast<std::uint64_t>(plexonRate) *
-		deliveryGuardMs / 1000ULL;
-
-	if (estimatedPlexonTicks <= guardTicks) {
-		return;
-	}
-
-	const std::uint64_t watermarkTicks =
-		estimatedPlexonTicks - guardTicks;
-	const std::uint64_t firstIncompleteBin =
-		watermarkTicks / ticksPerBin;
-
-	// Emit every elapsed bin. Missing map entries intentionally become
-	// all-zero spike vectors, preserving the decoder's time axis. Bound
-	// each callback so a large backlog cannot monopolize the GUI thread.
+	// The newest observed Plexon bin remains open. Every earlier bin is
+	// complete under the same timestamp-order assumption as the legacy code.
+	// Missing map entries become zero vectors when a later event arrives.
 	int emittedBins = 0;
-	while (nextBinToEmit < firstIncompleteBin &&
+	while (nextBinToEmit < newestSeenBin &&
 		emittedBins < PlaxTime::MaxBinsPerFlush) {
 		emitOneBin(nextBinToEmit);
 		++nextBinToEmit;
@@ -242,15 +207,10 @@ bool PlexonConnector::receivePlexonSignal()
 	//** step through the array of MAP events, displaying only the NIDAQ samples
 	for (int eventIndex = 0; eventIndex < numEvents; eventIndex++) {
 		PL_Event &event = pEventBuffer[eventIndex];
-		const std::uint64_t eventTicks = getTimestampTicks(event);
-		if (eventTicks > latestObservedTicks) {
-			latestObservedTicks = eventTicks;
-			// Re-anchor the local monotonic clock to the newest Plexon
-			// timestamp so zero bins continue promptly after activity stops.
-			clockStartTicks = eventTicks;
-			plexonClock.restart();
-		}
 		const std::uint64_t absoluteBin = getAbsoluteBin(event);
+		if (absoluteBin > newestSeenBin) {
+			newestSeenBin = absoluteBin;
+		}
 		const unsigned int eventTime = getSessionBin(absoluteBin);
 		//int is = pEventBuffer[eventIndex].Type;
 		//qDebug() << "Event type in Int" << is;

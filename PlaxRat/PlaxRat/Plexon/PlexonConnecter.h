@@ -4,7 +4,6 @@
 #include <map>
 #include <queue>
 #include <iostream>
-#include <QElapsedTimer>
 #include <QFile>
 #include <QTextStream>
 #include "Timebase.h"
@@ -41,14 +40,11 @@ class PlexonConnector
 	std::queue <int> leverQueue;
 	std::queue <int> actionQueue;
 	std::uint64_t ticksPerBin = 0;
-	std::uint64_t clockStartTicks = 0;
-	std::uint64_t latestObservedTicks = 0;
 	std::uint64_t firstOutputBin = 0;
 	std::uint64_t nextBinToEmit = 0;
+	std::uint64_t newestSeenBin = 0;
 	bool binnerStarted = false;
 	unsigned int lateSpikeCount = 0;
-	int deliveryGuardMs = PlaxTime::DeliveryGuardMs;
-	QElapsedTimer plexonClock;
 	std::map<std::uint64_t, vec> pendingSpikeBins;
 
 public:
