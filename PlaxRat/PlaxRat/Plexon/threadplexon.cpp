@@ -640,6 +640,16 @@ void ThreadPlexon::inTick() {
 	connector->inTick();
 }
 
+TimingDiagnosticsSnapshot ThreadPlexon::getTimingDiagnostics() const
+{
+	return connector->getTimingDiagnostics();
+}
+
+void ThreadPlexon::resetTimingDiagnostics()
+{
+	connector->resetTimingDiagnostics();
+}
+
 void ThreadPlexon::onTestChannel(uint chid) {
 	onTestify(chid);
 }

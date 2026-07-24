@@ -6,6 +6,7 @@
 #include "Plexon\threadplexon.hpp"
 #include <QFile>
 #include <QTextStream>
+#include <QTimer>
 #include "Paradigm.h"
 #include "Decoder\Decoder.h"
 #include "Displayer.h"
@@ -111,9 +112,13 @@ public slots:
 	void on_wrongPressFeedback_stateChanged(int state); //2022-12-04, added by SONG, Zhiwei
 	void on_editResponseTime_editingFinished();	// 2021-10-02, , add by SONG, Zhiwei
 	void on_editHoldingCueFreq_editingFinished();	// 2024-01-27,, add by SONG, Zhiwei
+	void refreshTimingDiagnostics();
+	void on_btnResetTiming_clicked();
 private:
+	void setupTimingDiagnostics();
 	Ui::PlaxRatClass ui;
 	ThreadPlexon *thrdPlexon;
+	QTimer *timingUiTimer;
 	QLabel *spkCount[MaxChannelCount];
 	bool bRecord;
 	QTextStream recordStream, recordStreamOfDecoder, recordStreamOfActivity,recordStreamOfDescription,behaviorTrainingStream;

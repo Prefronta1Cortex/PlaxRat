@@ -8,6 +8,7 @@
 
 class PlaxRat;
 class PlexonConnector;
+struct TimingDiagnosticsSnapshot;
 
 class ThreadPlexon : public QThread {
 	Q_OBJECT
@@ -75,6 +76,8 @@ public:
 public:
 	void onTestify(uint channel);
 	void inTick();
+	TimingDiagnosticsSnapshot getTimingDiagnostics() const;
+	void resetTimingDiagnostics();
 	//double LowLeverLowerBound = -1.5,LowLeverUpperBound=-0.7, HighLeverLowerBound = 0.7, HighLeverUpperBound = 1.5, restLowerBound=-0.7,restUpperBound=0.7;
 	//double LowLeverSlope = 2, HighLeverSlope = -2, Intercept = 0.5;
 	// Note: The default value here should be the same as the value in PlaxRat::on_feedBackMethod_currentTextChanged(), by TAN, Jieyuan, 2023.1.11

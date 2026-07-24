@@ -1,9 +1,13 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <map>
+#include <mutex>
 #include <queue>
+#include <vector>
 #include <iostream>
 #include <QFile>
 #include <QTextStream>
@@ -15,9 +19,23 @@ using namespace arma;
 
 class ThreadPlexon;
 
+struct TimingDiagnosticsSnapshot
+{
+	std::vector<double> intervalsMs;
+	std::uint64_t emittedBins = 0;
+	std::uint64_t zeroBins = 0;
+	std::size_t backlogBins = 0;
+	std::size_t maximumBacklogBins = 0;
+	unsigned int lateSpikes = 0;
+	int pollingIntervalMs = 0;
+	int guardMs = 0;
+	bool started = false;
+};
+
 class PlexonConnector
 {
 	using SteadyClock = std::chrono::steady_clock;
+	enum { MaxTimingSamples = 3000 };
 
 	PL_Event*  pEventBuffer;     //** buffer in which the Server will return MAP events
 	int           numEvents;           //** number of MAP events returned from the Server
@@ -49,9 +67,18 @@ class PlexonConnector
 	std::uint64_t nextBinToEmit = 0;
 	bool binnerStarted = false;
 	unsigned int lateSpikeCount = 0;
+	int sdkPollingIntervalMs = 0;
 	int deliveryGuardMs = PlaxTime::DeliveryGuardMs;
 	SteadyClock::time_point clockStartTime;
 	std::map<std::uint64_t, vec> pendingSpikeBins;
+	mutable std::mutex timingMutex;
+	std::deque<double> timingIntervalsMs;
+	SteadyClock::time_point previousEmitTime;
+	bool hasPreviousEmitTime = false;
+	std::uint64_t timingEmittedBins = 0;
+	std::uint64_t timingZeroBins = 0;
+	std::size_t timingBacklogBins = 0;
+	std::size_t timingMaximumBacklogBins = 0;
 
 public:
 
@@ -60,6 +87,8 @@ public:
 
 	bool isConnected() { return inited; }
 	void inTick();
+	TimingDiagnosticsSnapshot getTimingDiagnostics() const;
+	void resetTimingDiagnostics();
 
 	static const int MaxChannelCount;
 	void emptyQueues();

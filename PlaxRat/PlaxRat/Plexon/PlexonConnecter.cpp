@@ -51,7 +51,7 @@ PlexonConnector::PlexonConnector(ThreadPlexon *thread) : channelFiringRate(MaxCh
 	qDebug() << "Bin width =" << PlaxTime::BinMs << "ms";
 	qDebug() << "Timestamp ticks per bin ="
 		<< static_cast<qulonglong>(ticksPerBin);
-	const int sdkPollingIntervalMs = PL_GetPollingInterval();
+	sdkPollingIntervalMs = PL_GetPollingInterval();
 	if (sdkPollingIntervalMs > 0) {
 		const int sdkSafeGuardMs =
 			sdkPollingIntervalMs + PlaxTime::BinMs;
@@ -83,6 +83,36 @@ PlexonConnector::~PlexonConnector()
 void PlexonConnector::inTick()
 {
 	receivePlexonSignal();
+}
+
+TimingDiagnosticsSnapshot PlexonConnector::getTimingDiagnostics() const
+{
+	std::lock_guard<std::mutex> lock(timingMutex);
+	TimingDiagnosticsSnapshot snapshot;
+	snapshot.intervalsMs.assign(
+		timingIntervalsMs.begin(),
+		timingIntervalsMs.end());
+	snapshot.emittedBins = timingEmittedBins;
+	snapshot.zeroBins = timingZeroBins;
+	snapshot.backlogBins = timingBacklogBins;
+	snapshot.maximumBacklogBins = timingMaximumBacklogBins;
+	snapshot.lateSpikes = lateSpikeCount;
+	snapshot.pollingIntervalMs = sdkPollingIntervalMs;
+	snapshot.guardMs = deliveryGuardMs;
+	snapshot.started = binnerStarted;
+	return snapshot;
+}
+
+void PlexonConnector::resetTimingDiagnostics()
+{
+	std::lock_guard<std::mutex> lock(timingMutex);
+	timingIntervalsMs.clear();
+	hasPreviousEmitTime = false;
+	timingEmittedBins = 0;
+	timingZeroBins = 0;
+	timingBacklogBins = 0;
+	timingMaximumBacklogBins = 0;
+	lateSpikeCount = 0;
 }
 
 //int extEventCount = 0;
@@ -125,6 +155,7 @@ void PlexonConnector::initializeBinner(std::uint64_t firstEventTicks)
 	channelFiringRate.zeros();
 	clockStartTime = SteadyClock::now();
 	binnerStarted = true;
+	resetTimingDiagnostics();
 
 	qDebug() << "10 ms binner started at Plexon bin"
 		<< static_cast<qulonglong>(firstOutputBin);
@@ -139,9 +170,15 @@ void PlexonConnector::addSpikeToBin(
 	}
 
 	if (absoluteBin < nextBinToEmit) {
-		++lateSpikeCount;
-		if (lateSpikeCount == 1 || lateSpikeCount % 100 == 0) {
-			qWarning() << "Late Plexon spikes =" << lateSpikeCount;
+		unsigned int currentLateSpikeCount = 0;
+		{
+			std::lock_guard<std::mutex> lock(timingMutex);
+			currentLateSpikeCount = ++lateSpikeCount;
+		}
+		if (currentLateSpikeCount == 1 ||
+			currentLateSpikeCount % 100 == 0) {
+			qWarning() << "Late Plexon spikes ="
+				<< currentLateSpikeCount;
 		}
 		return;
 	}
@@ -164,9 +201,30 @@ void PlexonConnector::emitOneBin(std::uint64_t absoluteBin)
 
 	std::map<std::uint64_t, vec>::iterator binIt =
 		pendingSpikeBins.find(absoluteBin);
+	const bool isZeroBin = binIt == pendingSpikeBins.end();
 	if (binIt != pendingSpikeBins.end()) {
 		channelFiringRate = binIt->second;
 		pendingSpikeBins.erase(binIt);
+	}
+
+	const SteadyClock::time_point now = SteadyClock::now();
+	{
+		std::lock_guard<std::mutex> lock(timingMutex);
+		if (hasPreviousEmitTime) {
+			const double intervalMs =
+				std::chrono::duration<double, std::milli>(
+					now - previousEmitTime).count();
+			timingIntervalsMs.push_back(intervalMs);
+			if (timingIntervalsMs.size() > MaxTimingSamples) {
+				timingIntervalsMs.pop_front();
+			}
+		}
+		previousEmitTime = now;
+		hasPreviousEmitTime = true;
+		++timingEmittedBins;
+		if (isZeroBin) {
+			++timingZeroBins;
+		}
 	}
 
 	currTime = static_cast<int>(getSessionBin(absoluteBin));
@@ -211,12 +269,29 @@ void PlexonConnector::flushCompletedBins()
 		watermarkTicks / ticksPerBin;
 
 	// Emit every safe bin. Missing map entries become zero vectors.
+	{
+		std::lock_guard<std::mutex> lock(timingMutex);
+		timingBacklogBins = firstIncompleteBin > nextBinToEmit
+			? static_cast<std::size_t>(
+				firstIncompleteBin - nextBinToEmit)
+			: 0;
+		if (timingBacklogBins > timingMaximumBacklogBins) {
+			timingMaximumBacklogBins = timingBacklogBins;
+		}
+	}
 	int emittedBins = 0;
 	while (nextBinToEmit < firstIncompleteBin &&
 		emittedBins < PlaxTime::MaxBinsPerFlush) {
 		emitOneBin(nextBinToEmit);
 		++nextBinToEmit;
 		++emittedBins;
+	}
+	{
+		std::lock_guard<std::mutex> lock(timingMutex);
+		timingBacklogBins = firstIncompleteBin > nextBinToEmit
+			? static_cast<std::size_t>(
+				firstIncompleteBin - nextBinToEmit)
+			: 0;
 	}
 }
 
