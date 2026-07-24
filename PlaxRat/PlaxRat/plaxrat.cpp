@@ -7,6 +7,7 @@
 #include "Decoder\DecoderKalman.h"
 #include <time.h>
 #include "MatTester.h"
+#include "Plexon\Timebase.h"
 
 #include <PlexDO.h>
 #pragma comment(lib,"lib/PlexDO.lib")
@@ -638,7 +639,9 @@ void PlaxRat::on_btnConnect_clicked()
 		//thrdPlexon->setRecord(bRecord);
 		//tester=new MatTester(this);
 		//tester->virtualConnect();
-		thrdTimerId = startTimer(20);
+		thrdTimerId = startTimer(
+			PlaxTime::AcquisitionPollMs,
+			Qt::PreciseTimer);
 		//thrdPlexon->start();
 		ui.editResponseTime->setText(QString::number(thrdPlexon->trialResponseTimeLimit));		// 2021-10-06, add by SONG,Zhiwei
 		ui.editHoldingCueFreq->setText(QString::number(holdingCueFre));		// 2024-01-27, add by SONG,Zhiwei
