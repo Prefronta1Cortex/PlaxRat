@@ -7,6 +7,9 @@
 #include "Decoder\DecoderKalman.h"
 #include <time.h>
 #include "MatTester.h"
+#include "Plexon\Timebase.h"
+#include "Plexon\PlexonConnecter.h"
+#include <algorithm>
 
 #include <PlexDO.h>
 #pragma comment(lib,"lib/PlexDO.lib")
@@ -62,6 +65,7 @@ PlaxRat::PlaxRat(QWidget *parent)
 	displayer_Y = new Displayer(this, ui.pltDisplayer_Y, ui.pltDisplayer_Y, ui.pltDisplayer_Y);
 	displayer_2D = new Displayer_2D(this, ui.pltDisplayer_2D);
 	thrdPlexon = new ThreadPlexon(this);
+	setupTimingDiagnostics();
 	on_editLag_editingFinished();
 	on_editTrainSize_editingFinished();
 	connect(this, SIGNAL(replot()), ui.pltDisplayer_X, SLOT(replot()));
@@ -91,6 +95,213 @@ PlaxRat::PlaxRat(QWidget *parent)
 PlaxRat::~PlaxRat()
 {
 	
+}
+
+void PlaxRat::setupTimingDiagnostics()
+{
+	ui.grpTimingDiagnostics->setParent(ui.centralWidget);
+	ui.grpTimingDiagnostics->setGeometry(1180, 30, 340, 691);
+	ui.grpTimingDiagnostics->show();
+
+	ui.pltTiming->xAxis->setLabel("Last 30 seconds");
+	ui.pltTiming->yAxis->setLabel("Interval (ms)");
+	ui.pltTiming->xAxis->setRange(-30.0, 0.0);
+	ui.pltTiming->yAxis->setRange(0.0, 50.0);
+
+	ui.pltTiming->addGraph();
+	ui.pltTiming->addGraph();
+	ui.pltTiming->addGraph();
+
+	QPen intervalPen(QColor(0, 90, 180));
+	intervalPen.setWidth(2);
+	ui.pltTiming->graph(0)->setPen(intervalPen);
+
+	QPen targetPen(QColor(0, 140, 0));
+	targetPen.setStyle(Qt::DashLine);
+	ui.pltTiming->graph(1)->setPen(targetPen);
+
+	QPen warningPen(QColor(200, 0, 0));
+	warningPen.setStyle(Qt::DashLine);
+	ui.pltTiming->graph(2)->setPen(warningPen);
+
+	QVector<double> referenceX;
+	referenceX << -30.0 << 0.0;
+	QVector<double> targetY;
+	targetY << 10.0 << 10.0;
+	QVector<double> warningY;
+	warningY << 20.0 << 20.0;
+	ui.pltTiming->graph(1)->setData(referenceX, targetY);
+	ui.pltTiming->graph(2)->setData(referenceX, warningY);
+
+	ui.lblTimingStatus->setStyleSheet(
+		"QLabel { background-color: rgb(110, 110, 110); "
+		"color: white; font-weight: bold; border: 1px solid gray; }");
+
+	timingUiTimer = new QTimer(this);
+	connect(timingUiTimer, SIGNAL(timeout()),
+		this, SLOT(refreshTimingDiagnostics()));
+	timingUiTimer->start(500);
+}
+
+void PlaxRat::refreshTimingDiagnostics()
+{
+	if (thrdPlexon == nullptr) {
+		return;
+	}
+
+	const TimingDiagnosticsSnapshot snapshot =
+		thrdPlexon->getTimingDiagnostics();
+
+	ui.lblTimingConfig->setText(
+		QString("Bin %1 ms | Poll %2 ms | Guard %3 ms")
+			.arg(PlaxTime::BinMs)
+			.arg(snapshot.pollingIntervalMs)
+			.arg(snapshot.guardMs));
+	ui.lblTimingBacklog->setText(
+		QString("%1 / %2 bins")
+			.arg(static_cast<qulonglong>(snapshot.backlogBins))
+			.arg(static_cast<qulonglong>(
+				snapshot.maximumBacklogBins)));
+	ui.lblTimingLate->setText(
+		QString::number(snapshot.lateSpikes));
+
+	if (!snapshot.started || snapshot.intervalsMs.empty()) {
+		const bool immediateFailure =
+			snapshot.lateSpikes > 0 ||
+			snapshot.maximumBacklogBins > 10;
+		ui.lblTimingStatus->setText(immediateFailure
+			? "UNSTABLE"
+			: (snapshot.started ? "WARMING UP" : "WAITING"));
+		ui.lblTimingRate->setText("-- bins/s");
+		ui.lblTimingP99->setText("-- ms");
+		ui.lblTimingMax->setText("-- ms");
+		if (immediateFailure) {
+			ui.lblTimingStatus->setStyleSheet(
+				"QLabel { background-color: rgb(190, 45, 45); "
+				"color: white; font-weight: bold; border: 1px solid gray; }");
+		}
+		else {
+			ui.lblTimingStatus->setStyleSheet(
+				"QLabel { background-color: rgb(110, 110, 110); "
+				"color: white; font-weight: bold; border: 1px solid gray; }");
+		}
+		ui.pltTiming->graph(0)->data()->clear();
+		ui.pltTiming->replot(QCustomPlot::rpQueuedReplot);
+		return;
+	}
+
+	double visibleDurationMs = 0.0;
+	std::size_t firstVisible = snapshot.intervalsMs.size();
+	while (firstVisible > 0) {
+		const double nextDurationMs =
+			snapshot.intervalsMs[firstVisible - 1];
+		if (visibleDurationMs + nextDurationMs > 30000.0) {
+			break;
+		}
+		visibleDurationMs += nextDurationMs;
+		--firstVisible;
+	}
+
+	std::vector<double> windowIntervals(
+		snapshot.intervalsMs.begin() + firstVisible,
+		snapshot.intervalsMs.end());
+	if (windowIntervals.empty()) {
+		windowIntervals.push_back(snapshot.intervalsMs.back());
+		visibleDurationMs = snapshot.intervalsMs.back();
+	}
+
+	std::vector<double> sortedIntervals = windowIntervals;
+	std::sort(sortedIntervals.begin(), sortedIntervals.end());
+
+	double intervalSumMs = 0.0;
+	double maximumIntervalMs = 0.0;
+	for (std::size_t i = 0; i < windowIntervals.size(); ++i) {
+		const double intervalMs = windowIntervals[i];
+		intervalSumMs += intervalMs;
+		if (intervalMs > maximumIntervalMs) {
+			maximumIntervalMs = intervalMs;
+		}
+	}
+
+	const std::size_t p99Index =
+		((sortedIntervals.size() * 99 + 99) / 100) - 1;
+	const double p99IntervalMs = sortedIntervals[p99Index];
+	const double rateBinsPerSecond = intervalSumMs > 0.0
+		? static_cast<double>(windowIntervals.size()) *
+			1000.0 / intervalSumMs
+		: 0.0;
+
+	ui.lblTimingRate->setText(
+		QString("%1 bins/s")
+			.arg(rateBinsPerSecond, 0, 'f', 1));
+	ui.lblTimingP99->setText(
+		QString("%1 ms")
+			.arg(p99IntervalMs, 0, 'f', 1));
+	ui.lblTimingMax->setText(
+		QString("%1 ms")
+			.arg(maximumIntervalMs, 0, 'f', 1));
+
+	QVector<double> plotX;
+	QVector<double> plotY;
+	double plotTimeSeconds = -visibleDurationMs / 1000.0;
+	for (std::size_t i = 0; i < windowIntervals.size(); ++i) {
+		plotTimeSeconds += windowIntervals[i] / 1000.0;
+		plotX.push_back(plotTimeSeconds);
+		plotY.push_back(windowIntervals[i]);
+	}
+
+	ui.pltTiming->graph(0)->setData(plotX, plotY);
+
+	const bool enoughSamples = windowIntervals.size() >= 100;
+	const bool unstable =
+		snapshot.lateSpikes > 0 ||
+		snapshot.maximumBacklogBins > 10 ||
+		maximumIntervalMs > 50.0 ||
+		(enoughSamples && (p99IntervalMs > 20.0 ||
+			rateBinsPerSecond < 90.0 ||
+			rateBinsPerSecond > 110.0));
+	const bool warning =
+		!unstable &&
+		(maximumIntervalMs > 20.0 ||
+			snapshot.maximumBacklogBins > 3 ||
+			(enoughSamples && (p99IntervalMs > 15.0 ||
+				rateBinsPerSecond < 95.0 ||
+				rateBinsPerSecond > 105.0)));
+
+	if (unstable) {
+		ui.lblTimingStatus->setText("UNSTABLE");
+		ui.lblTimingStatus->setStyleSheet(
+			"QLabel { background-color: rgb(190, 45, 45); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
+	}
+	else if (warning) {
+		ui.lblTimingStatus->setText("WARNING");
+		ui.lblTimingStatus->setStyleSheet(
+			"QLabel { background-color: rgb(210, 145, 0); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
+	}
+	else if (!enoughSamples) {
+		ui.lblTimingStatus->setText("WARMING UP");
+		ui.lblTimingStatus->setStyleSheet(
+			"QLabel { background-color: rgb(110, 110, 110); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
+	}
+	else {
+		ui.lblTimingStatus->setText("STABLE");
+		ui.lblTimingStatus->setStyleSheet(
+			"QLabel { background-color: rgb(35, 145, 70); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
+	}
+
+	ui.pltTiming->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void PlaxRat::on_btnResetTiming_clicked()
+{
+	if (thrdPlexon != nullptr) {
+		thrdPlexon->resetTimingDiagnostics();
+	}
+	refreshTimingDiagnostics();
 }
 
 void PlaxRat::on_btnRecord_clicked() {
@@ -638,7 +849,9 @@ void PlaxRat::on_btnConnect_clicked()
 		//thrdPlexon->setRecord(bRecord);
 		//tester=new MatTester(this);
 		//tester->virtualConnect();
-		thrdTimerId = startTimer(20);
+		thrdTimerId = startTimer(
+			PlaxTime::AcquisitionPollMs,
+			Qt::PreciseTimer);
 		//thrdPlexon->start();
 		ui.editResponseTime->setText(QString::number(thrdPlexon->trialResponseTimeLimit));		// 2021-10-06, add by SONG,Zhiwei
 		ui.editHoldingCueFreq->setText(QString::number(holdingCueFre));		// 2024-01-27, add by SONG,Zhiwei
