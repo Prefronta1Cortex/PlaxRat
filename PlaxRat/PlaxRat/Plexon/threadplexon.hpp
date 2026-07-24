@@ -4,6 +4,7 @@
 #include <QString>
 #include <QtCore>
 #include "paradigm.h"
+#include "Timebase.h"
 #include <QTextStream>
 
 class PlaxRat;
@@ -86,7 +87,7 @@ public:
 	double RestCenterX = -0.3, RestCenterY = 0, RestRadius = 0.7;
 	double MiddleCenterX = 1.3, MiddleCenterY = 0, MiddleRadius = 0.6;
 	int restCnt = 0;
-	int restDuration = 10;
+	int restDuration = PlaxTime::binsForMilliseconds(1000);
 	bool isDecodeStart();
 	double manualBias_1 = 0;
 	double manualBias_2 = 0;

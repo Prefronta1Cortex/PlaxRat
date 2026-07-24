@@ -695,7 +695,7 @@
      </rect>
     </property>
     <property name="title">
-     <string>Spike MUA (100 ms)</string>
+     <string>Spike count (10 ms bins)</string>
     </property>
     <layout class="QGridLayout" name="gridLayout_2">
      <item row="0" column="5">

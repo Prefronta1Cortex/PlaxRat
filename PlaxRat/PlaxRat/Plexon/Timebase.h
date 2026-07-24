@@ -12,4 +12,15 @@ namespace PlaxTime
     // Poll more frequently than the 10 ms bin period.
     constexpr int AcquisitionPollMs = 2;
     constexpr int MaxBinsPerFlush = 10;
+
+    // Preserve legacy wall-clock behavior while bin-driven code moves from
+    // 100 ms bins to BinMs.
+    constexpr int binsForMilliseconds(int durationMs)
+    {
+        return (durationMs + BinMs - 1) / BinMs;
+    }
+
+    // Buffer every bin, but synchronize QCustomPlot data and repaint at the
+    // legacy 100 ms visual cadence.
+    constexpr int LegacyDisplayRefreshMs = 100;
 }

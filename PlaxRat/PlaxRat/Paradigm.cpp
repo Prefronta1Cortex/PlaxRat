@@ -233,10 +233,12 @@ QString StateHolding::getStateName() const
 void StateReaching::execute()
 {
 	paradigm->reachCnt++;
-	if (paradigm->reachCnt == 2)
+	if (paradigm->reachCnt >=
+		PlaxTime::binsForMilliseconds(200))
 		paradigm->reachCnt = 0;
 
-	if (paradigm->ctx->getTrialStartFlag() && paradigm->reachCnt>0)
+	if (paradigm->ctx->getTrialStartFlag() &&
+		paradigm->reachCnt == 1)
 	{
 		// 2022-03-31, change volume based on rdRatio, add by TAN, Jieyuan
 		double VolumeRatio;
