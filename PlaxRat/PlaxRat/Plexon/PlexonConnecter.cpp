@@ -89,9 +89,9 @@ TimingDiagnosticsSnapshot PlexonConnector::getTimingDiagnostics() const
 {
 	std::lock_guard<std::mutex> lock(timingMutex);
 	TimingDiagnosticsSnapshot snapshot;
-	snapshot.intervalsMs.assign(
-		timingIntervalsMs.begin(),
-		timingIntervalsMs.end());
+	snapshot.samples.assign(
+		timingSamples.begin(),
+		timingSamples.end());
 	snapshot.emittedBins = timingEmittedBins;
 	snapshot.zeroBins = timingZeroBins;
 	snapshot.backlogBins = timingBacklogBins;
@@ -106,7 +106,7 @@ TimingDiagnosticsSnapshot PlexonConnector::getTimingDiagnostics() const
 void PlexonConnector::resetTimingDiagnostics()
 {
 	std::lock_guard<std::mutex> lock(timingMutex);
-	timingIntervalsMs.clear();
+	timingSamples.clear();
 	hasPreviousEmitTime = false;
 	timingEmittedBins = 0;
 	timingZeroBins = 0;
@@ -154,8 +154,11 @@ void PlexonConnector::initializeBinner(std::uint64_t firstEventTicks)
 	pendingSpikeBins.clear();
 	channelFiringRate.zeros();
 	clockStartTime = SteadyClock::now();
-	binnerStarted = true;
 	resetTimingDiagnostics();
+	{
+		std::lock_guard<std::mutex> lock(timingMutex);
+		binnerStarted = true;
+	}
 
 	qDebug() << "10 ms binner started at Plexon bin"
 		<< static_cast<qulonglong>(firstOutputBin);
@@ -197,6 +200,7 @@ void PlexonConnector::addSpikeToBin(
 
 void PlexonConnector::emitOneBin(std::uint64_t absoluteBin)
 {
+	const SteadyClock::time_point now = SteadyClock::now();
 	channelFiringRate.zeros();
 
 	std::map<std::uint64_t, vec>::iterator binIt =
@@ -207,16 +211,21 @@ void PlexonConnector::emitOneBin(std::uint64_t absoluteBin)
 		pendingSpikeBins.erase(binIt);
 	}
 
-	const SteadyClock::time_point now = SteadyClock::now();
+	const unsigned int sessionBin = getSessionBin(absoluteBin);
 	{
 		std::lock_guard<std::mutex> lock(timingMutex);
 		if (hasPreviousEmitTime) {
-			const double intervalMs =
+			TimingSample sample;
+			sample.sessionBin = sessionBin;
+			sample.intervalMs =
 				std::chrono::duration<double, std::milli>(
 					now - previousEmitTime).count();
-			timingIntervalsMs.push_back(intervalMs);
-			if (timingIntervalsMs.size() > MaxTimingSamples) {
-				timingIntervalsMs.pop_front();
+			sample.zeroBin = isZeroBin;
+			sample.pendingBinCount = timingBacklogBins;
+			sample.lateSpikeCount = lateSpikeCount;
+			timingSamples.push_back(sample);
+			if (timingSamples.size() > MaxTimingSamples) {
+				timingSamples.pop_front();
 			}
 		}
 		previousEmitTime = now;
@@ -227,7 +236,7 @@ void PlexonConnector::emitOneBin(std::uint64_t absoluteBin)
 		}
 	}
 
-	currTime = static_cast<int>(getSessionBin(absoluteBin));
+	currTime = static_cast<int>(sessionBin);
 	parent->refreshBin(static_cast<unsigned int>(currTime), toneFlag);
 }
 
@@ -282,6 +291,11 @@ void PlexonConnector::flushCompletedBins()
 	int emittedBins = 0;
 	while (nextBinToEmit < firstIncompleteBin &&
 		emittedBins < PlaxTime::MaxBinsPerFlush) {
+		{
+			std::lock_guard<std::mutex> lock(timingMutex);
+			timingBacklogBins = static_cast<std::size_t>(
+				firstIncompleteBin - nextBinToEmit);
+		}
 		emitOneBin(nextBinToEmit);
 		++nextBinToEmit;
 		++emittedBins;

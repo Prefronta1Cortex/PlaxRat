@@ -19,9 +19,18 @@ using namespace arma;
 
 class ThreadPlexon;
 
+struct TimingSample
+{
+	std::uint64_t sessionBin = 0;
+	double intervalMs = 0.0;
+	bool zeroBin = false;
+	std::size_t pendingBinCount = 0;
+	unsigned int lateSpikeCount = 0;
+};
+
 struct TimingDiagnosticsSnapshot
 {
-	std::vector<double> intervalsMs;
+	std::vector<TimingSample> samples;
 	std::uint64_t emittedBins = 0;
 	std::uint64_t zeroBins = 0;
 	std::size_t backlogBins = 0;
@@ -72,7 +81,7 @@ class PlexonConnector
 	SteadyClock::time_point clockStartTime;
 	std::map<std::uint64_t, vec> pendingSpikeBins;
 	mutable std::mutex timingMutex;
-	std::deque<double> timingIntervalsMs;
+	std::deque<TimingSample> timingSamples;
 	SteadyClock::time_point previousEmitTime;
 	bool hasPreviousEmitTime = false;
 	std::uint64_t timingEmittedBins = 0;

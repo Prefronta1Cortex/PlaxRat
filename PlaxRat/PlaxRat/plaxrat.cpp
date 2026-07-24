@@ -10,6 +10,7 @@
 #include "Plexon\Timebase.h"
 #include "Plexon\PlexonConnecter.h"
 #include <algorithm>
+#include <QMenu>
 
 #include <PlexDO.h>
 #pragma comment(lib,"lib/PlexDO.lib")
@@ -99,15 +100,16 @@ PlaxRat::~PlaxRat()
 
 void PlaxRat::setupTimingDiagnostics()
 {
-	ui.grpTimingDiagnostics->setParent(ui.centralWidget);
-	ui.grpTimingDiagnostics->setGeometry(1180, 30, 340, 691);
-	ui.grpTimingDiagnostics->show();
+	QMenu *viewMenu = ui.menuBar->addMenu("View");
+	viewMenu->addAction(ui.dockTimingDiagnostics->toggleViewAction());
 
 	ui.pltTiming->xAxis->setLabel("Last 30 seconds");
 	ui.pltTiming->yAxis->setLabel("Interval (ms)");
 	ui.pltTiming->xAxis->setRange(-30.0, 0.0);
 	ui.pltTiming->yAxis->setRange(0.0, 50.0);
 
+	ui.pltTiming->addGraph();
+	ui.pltTiming->addGraph();
 	ui.pltTiming->addGraph();
 	ui.pltTiming->addGraph();
 	ui.pltTiming->addGraph();
@@ -120,18 +122,32 @@ void PlaxRat::setupTimingDiagnostics()
 	targetPen.setStyle(Qt::DashLine);
 	ui.pltTiming->graph(1)->setPen(targetPen);
 
+	QPen cautionPen(QColor(210, 145, 0));
+	cautionPen.setStyle(Qt::DashLine);
+	ui.pltTiming->graph(2)->setPen(cautionPen);
+
 	QPen warningPen(QColor(200, 0, 0));
 	warningPen.setStyle(Qt::DashLine);
-	ui.pltTiming->graph(2)->setPen(warningPen);
+	ui.pltTiming->graph(3)->setPen(warningPen);
+
+	ui.pltTiming->graph(4)->setLineStyle(QCPGraph::lsNone);
+	ui.pltTiming->graph(4)->setScatterStyle(
+		QCPScatterStyle(
+			QCPScatterStyle::ssDisc,
+			QColor(200, 0, 0),
+			7.0));
 
 	QVector<double> referenceX;
 	referenceX << -30.0 << 0.0;
 	QVector<double> targetY;
 	targetY << 10.0 << 10.0;
+	QVector<double> cautionY;
+	cautionY << 15.0 << 15.0;
 	QVector<double> warningY;
 	warningY << 20.0 << 20.0;
 	ui.pltTiming->graph(1)->setData(referenceX, targetY);
-	ui.pltTiming->graph(2)->setData(referenceX, warningY);
+	ui.pltTiming->graph(2)->setData(referenceX, cautionY);
+	ui.pltTiming->graph(3)->setData(referenceX, warningY);
 
 	ui.lblTimingStatus->setStyleSheet(
 		"QLabel { background-color: rgb(110, 110, 110); "
@@ -140,12 +156,13 @@ void PlaxRat::setupTimingDiagnostics()
 	timingUiTimer = new QTimer(this);
 	connect(timingUiTimer, SIGNAL(timeout()),
 		this, SLOT(refreshTimingDiagnostics()));
-	timingUiTimer->start(500);
+	timingUiTimer->start(200);
 }
 
 void PlaxRat::refreshTimingDiagnostics()
 {
-	if (thrdPlexon == nullptr) {
+	if (thrdPlexon == nullptr ||
+		!ui.dockTimingDiagnostics->isVisible()) {
 		return;
 	}
 
@@ -153,22 +170,20 @@ void PlaxRat::refreshTimingDiagnostics()
 		thrdPlexon->getTimingDiagnostics();
 
 	ui.lblTimingConfig->setText(
-		QString("Bin %1 ms | Poll %2 ms | Guard %3 ms")
+		QString("Bin %1 ms | Plexon poll %2 ms | Guard %3 ms")
 			.arg(PlaxTime::BinMs)
 			.arg(snapshot.pollingIntervalMs)
 			.arg(snapshot.guardMs));
 	ui.lblTimingBacklog->setText(
-		QString("%1 / %2 bins")
-			.arg(static_cast<qulonglong>(snapshot.backlogBins))
-			.arg(static_cast<qulonglong>(
-				snapshot.maximumBacklogBins)));
+		QString("%1 bins")
+			.arg(static_cast<qulonglong>(snapshot.backlogBins)));
 	ui.lblTimingLate->setText(
-		QString::number(snapshot.lateSpikes));
+		QString("%1 spikes").arg(snapshot.lateSpikes));
 
-	if (!snapshot.started || snapshot.intervalsMs.empty()) {
+	if (!snapshot.started || snapshot.samples.empty()) {
 		const bool immediateFailure =
 			snapshot.lateSpikes > 0 ||
-			snapshot.maximumBacklogBins > 10;
+			snapshot.backlogBins > 10;
 		ui.lblTimingStatus->setText(immediateFailure
 			? "UNSTABLE"
 			: (snapshot.started ? "WARMING UP" : "WAITING"));
@@ -186,15 +201,16 @@ void PlaxRat::refreshTimingDiagnostics()
 				"color: white; font-weight: bold; border: 1px solid gray; }");
 		}
 		ui.pltTiming->graph(0)->data()->clear();
+		ui.pltTiming->graph(4)->data()->clear();
 		ui.pltTiming->replot(QCustomPlot::rpQueuedReplot);
 		return;
 	}
 
 	double visibleDurationMs = 0.0;
-	std::size_t firstVisible = snapshot.intervalsMs.size();
+	std::size_t firstVisible = snapshot.samples.size();
 	while (firstVisible > 0) {
 		const double nextDurationMs =
-			snapshot.intervalsMs[firstVisible - 1];
+			snapshot.samples[firstVisible - 1].intervalMs;
 		if (visibleDurationMs + nextDurationMs > 30000.0) {
 			break;
 		}
@@ -202,12 +218,15 @@ void PlaxRat::refreshTimingDiagnostics()
 		--firstVisible;
 	}
 
-	std::vector<double> windowIntervals(
-		snapshot.intervalsMs.begin() + firstVisible,
-		snapshot.intervalsMs.end());
+	std::vector<double> windowIntervals;
+	windowIntervals.reserve(snapshot.samples.size() - firstVisible);
+	for (std::size_t i = firstVisible;
+		i < snapshot.samples.size(); ++i) {
+		windowIntervals.push_back(snapshot.samples[i].intervalMs);
+	}
 	if (windowIntervals.empty()) {
-		windowIntervals.push_back(snapshot.intervalsMs.back());
-		visibleDurationMs = snapshot.intervalsMs.back();
+		windowIntervals.push_back(snapshot.samples.back().intervalMs);
+		visibleDurationMs = snapshot.samples.back().intervalMs;
 	}
 
 	std::vector<double> sortedIntervals = windowIntervals;
@@ -215,11 +234,15 @@ void PlaxRat::refreshTimingDiagnostics()
 
 	double intervalSumMs = 0.0;
 	double maximumIntervalMs = 0.0;
+	std::size_t intervalsOver50Ms = 0;
 	for (std::size_t i = 0; i < windowIntervals.size(); ++i) {
 		const double intervalMs = windowIntervals[i];
 		intervalSumMs += intervalMs;
 		if (intervalMs > maximumIntervalMs) {
 			maximumIntervalMs = intervalMs;
+		}
+		if (intervalMs > 50.0) {
+			++intervalsOver50Ms;
 		}
 	}
 
@@ -243,27 +266,37 @@ void PlaxRat::refreshTimingDiagnostics()
 
 	QVector<double> plotX;
 	QVector<double> plotY;
+	QVector<double> clippedMarkerX;
+	QVector<double> clippedMarkerY;
 	double plotTimeSeconds = -visibleDurationMs / 1000.0;
 	for (std::size_t i = 0; i < windowIntervals.size(); ++i) {
 		plotTimeSeconds += windowIntervals[i] / 1000.0;
 		plotX.push_back(plotTimeSeconds);
-		plotY.push_back(windowIntervals[i]);
+		const double intervalMs = windowIntervals[i];
+		plotY.push_back(intervalMs > 50.0 ? 50.0 : intervalMs);
+		if (intervalMs > 50.0) {
+			clippedMarkerX.push_back(plotTimeSeconds);
+			clippedMarkerY.push_back(50.0);
+		}
 	}
 
 	ui.pltTiming->graph(0)->setData(plotX, plotY);
+	ui.pltTiming->graph(4)->setData(
+		clippedMarkerX,
+		clippedMarkerY);
 
 	const bool enoughSamples = windowIntervals.size() >= 100;
 	const bool unstable =
 		snapshot.lateSpikes > 0 ||
-		snapshot.maximumBacklogBins > 10 ||
-		maximumIntervalMs > 50.0 ||
+		snapshot.backlogBins > 10 ||
+		intervalsOver50Ms >= 2 ||
 		(enoughSamples && (p99IntervalMs > 20.0 ||
 			rateBinsPerSecond < 90.0 ||
 			rateBinsPerSecond > 110.0));
 	const bool warning =
 		!unstable &&
 		(maximumIntervalMs > 20.0 ||
-			snapshot.maximumBacklogBins > 3 ||
+			snapshot.backlogBins > 3 ||
 			(enoughSamples && (p99IntervalMs > 15.0 ||
 				rateBinsPerSecond < 95.0 ||
 				rateBinsPerSecond > 105.0)));
