@@ -4,10 +4,12 @@
 #include <QString>
 #include <QtCore>
 #include "paradigm.h"
+#include "Timebase.h"
 #include <QTextStream>
 
 class PlaxRat;
 class PlexonConnector;
+struct TimingDiagnosticsSnapshot;
 
 class ThreadPlexon : public QThread {
 	Q_OBJECT
@@ -75,6 +77,8 @@ public:
 public:
 	void onTestify(uint channel);
 	void inTick();
+	TimingDiagnosticsSnapshot getTimingDiagnostics() const;
+	void resetTimingDiagnostics();
 	//double LowLeverLowerBound = -1.5,LowLeverUpperBound=-0.7, HighLeverLowerBound = 0.7, HighLeverUpperBound = 1.5, restLowerBound=-0.7,restUpperBound=0.7;
 	//double LowLeverSlope = 2, HighLeverSlope = -2, Intercept = 0.5;
 	// Note: The default value here should be the same as the value in PlaxRat::on_feedBackMethod_currentTextChanged(), by TAN, Jieyuan, 2023.1.11
@@ -83,7 +87,7 @@ public:
 	double RestCenterX = -0.3, RestCenterY = 0, RestRadius = 0.7;
 	double MiddleCenterX = 1.3, MiddleCenterY = 0, MiddleRadius = 0.6;
 	int restCnt = 0;
-	int restDuration = 10;
+	int restDuration = PlaxTime::binsForMilliseconds(1000);
 	bool isDecodeStart();
 	double manualBias_1 = 0;
 	double manualBias_2 = 0;

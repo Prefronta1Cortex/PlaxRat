@@ -7,6 +7,7 @@
 #include <PlexDO.h>
 #pragma comment(lib,"lib/PlexDO.lib")
 #include <time.h> // 2022-10-15, added by SONG, Zhiwei
+#include "Timebase.h"
 ThreadPlexon::ThreadPlexon(PlaxRat *parent) : QThread(), stopped(false), mutex(),mutex2(), bRecord(false), parent(parent) 
 {
 	connector = new PlexonConnector{ this };
@@ -36,7 +37,7 @@ void ThreadPlexon::run()
 			QMutexLocker locker(&mutex);
 			connector->inTick();
 		}
-		msleep(20);
+		msleep(PlaxTime::AcquisitionPollMs);
 	}
 
 	if (parent->isDecodeFromFile)
@@ -637,6 +638,16 @@ void ThreadPlexon::refreshBin(uint newTime,int toneFlag)
 
 void ThreadPlexon::inTick() {
 	connector->inTick();
+}
+
+TimingDiagnosticsSnapshot ThreadPlexon::getTimingDiagnostics() const
+{
+	return connector->getTimingDiagnostics();
+}
+
+void ThreadPlexon::resetTimingDiagnostics()
+{
+	connector->resetTimingDiagnostics();
 }
 
 void ThreadPlexon::onTestChannel(uint chid) {
