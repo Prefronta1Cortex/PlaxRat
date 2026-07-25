@@ -69,6 +69,7 @@ class PlexonConnector
 	bool		  omissionFlag;                    //2022-10-02, add pressFlag, by SONG, Zhiwei
 	std::queue <int> leverQueue;
 	std::queue <int> actionQueue;
+	mutable std::mutex eventQueueMutex;
 	std::uint64_t ticksPerBin = 0;
 	std::uint64_t clockStartTicks = 0;
 	std::uint64_t latestObservedTicks = 0;

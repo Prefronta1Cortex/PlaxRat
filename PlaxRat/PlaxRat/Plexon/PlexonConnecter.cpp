@@ -237,7 +237,14 @@ void PlexonConnector::emitOneBin(std::uint64_t absoluteBin)
 	}
 
 	currTime = static_cast<int>(sessionBin);
-	parent->refreshBin(static_cast<unsigned int>(currTime), toneFlag);
+	QVector<double> channelCounts(MaxChannelCount);
+	for (int channel = 0; channel < MaxChannelCount; ++channel) {
+		channelCounts[channel] = channelFiringRate(channel);
+	}
+	parent->publishBin(
+		channelCounts,
+		static_cast<unsigned int>(currTime),
+		toneFlag);
 }
 
 void PlexonConnector::flushCompletedBins()
@@ -316,6 +323,7 @@ bool PlexonConnector::receivePlexonSignal()
 	double responseTime; // 2022-10-02, added by SONG, Zhiwei
 	//** call the Server to get all the MAP events since the last time we called PL_GetTimeStampStructures
 	PL_GetTimeStampStructures(&numEvents, pEventBuffer); // 2017-11-01 ZX comment
+	std::unique_lock<std::mutex> queueLock(eventQueueMutex);
 
 	//      Copies the timestamp structures that the server transferred to MMF since
 	//          any of the PL_GetTimeStamp* or PL_GetWave* was called last time
@@ -377,7 +385,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setSuccessfulTrialIndicator(true);
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Success," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Success,%1").arg(eventTime));
 							}
 						}
 						else if (extEventArray[1] == 4) {  // Lever not held
@@ -385,7 +394,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setFail();
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Early release," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Early release,%1").arg(eventTime));
 							}
 							pressFlag = 0; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -395,7 +405,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->startTrial();
 							parent->trialStartFlag = true;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Start," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Start,%1").arg(eventTime));
 							}
 							omissionFlag = false;//   2022-10-02, add by SONG, Zhiwei
 							parent->startTime = clock();//   2022-10-02,add by SONG, Zhiwei
@@ -409,7 +420,8 @@ bool PlexonConnector::receivePlexonSignal()
 							// add end
 							parent->setHolding(true);
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Press," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Press,%1").arg(eventTime));
 							}
 							pressFlag = 1; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -429,7 +441,8 @@ bool PlexonConnector::receivePlexonSignal()
 							if (!omissionFlag) {
 								if (pressFlag) {
 									if (parent->isWrongPressFeedback) {
-										PlaySoundA("wav files\\1.5kHz25msSmall.wav", NULL, SND_ASYNC);
+										parent->playSound(
+											"wav files\\1.5kHz25msSmall.wav");
 									}
 									//qDebug() << "isWrongPressFeedback:" << parent->isWrongPressFeedback
 								}
@@ -438,7 +451,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setFail();
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Omission," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Omission,%1").arg(eventTime));
 							}
 							pressFlag = 0; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -449,7 +463,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setSuccessfulTrialIndicator(true);
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Success," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Success,%1").arg(eventTime));
 							}
 						}
 						else if (extEventArray[1] == 4) {  // Lever not held
@@ -457,7 +472,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setFail();
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Early release," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Early release,%1").arg(eventTime));
 							}
 							pressFlag = 0; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -467,7 +483,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->startTrial();
 							parent->trialStartFlag = true;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Start," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Start,%1").arg(eventTime));
 							}
 							omissionFlag = false;
 							parent->startTime = clock();
@@ -482,7 +499,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setHolding(true);
 
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Press," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Press,%1").arg(eventTime));
 							}
 							pressFlag = 1; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -502,7 +520,8 @@ bool PlexonConnector::receivePlexonSignal()
 								if (pressFlag) {
 									// 2000
 									if (parent->isWrongPressFeedback) {
-										PlaySoundA("wav files\\10kHz25msSmall.wav", NULL, SND_ASYNC);
+										parent->playSound(
+											"wav files\\10kHz25msSmall.wav");
 									}
 
 									//qDebug() << "isWrongPressFeedback:" << parent->isWrongPressFeedback;
@@ -512,7 +531,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setFail();
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Omission," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Omission,%1").arg(eventTime));
 							}
 							pressFlag = 0; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -782,6 +802,7 @@ bool PlexonConnector::receivePlexonSignal()
 		}
 
 	}
+	queueLock.unlock();
 	flushCompletedBins();
 	return true;
 }
@@ -1017,7 +1038,11 @@ void PlexonConnector::receivePlaybackSignal(QString filename)
 
 		if (count == MaxChannelCount + 2) {
 			count = 0;
-			parent->refreshBin(currTime, toneFlag);
+			QVector<double> channelCounts(MaxChannelCount);
+			for (int channel = 0; channel < MaxChannelCount; ++channel) {
+				channelCounts[channel] = channelFiringRate(channel);
+			}
+			parent->publishBin(channelCounts, currTime, toneFlag);
 			//qDebug() << "233";
 			//qDebug() << currTime;
 			//qDebug() << "toneFlag is" <<toneFlag;
@@ -1045,6 +1070,7 @@ void PlexonConnector::logResult(PL_Event & info)
 
 void PlexonConnector::emptyQueues()
 {
+	std::lock_guard<std::mutex> lock(eventQueueMutex);
 	while (!leverQueue.empty())
 		leverQueue.pop();
 	while (!actionQueue.empty())
@@ -1053,6 +1079,7 @@ void PlexonConnector::emptyQueues()
 
 bool PlexonConnector::isQueueEmpty()
 {
+	std::lock_guard<std::mutex> lock(eventQueueMutex);
 	if (leverQueue.empty() && actionQueue.empty())
 		return true;
 	else

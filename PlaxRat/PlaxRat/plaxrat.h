@@ -120,7 +120,7 @@ private:
 	void setupLegacyDisplay();
 	void setupTimingDiagnostics();
 	Ui::PlaxRatClass ui;
-	ThreadPlexon *thrdPlexon;
+	ThreadPlexon *thrdPlexon = nullptr;
 	QTimer *legacyDisplayTimer;
 	QTimer *timingUiTimer;
 	QLabel *spkCount[MaxChannelCount];

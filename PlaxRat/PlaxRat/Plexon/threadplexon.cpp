@@ -6,10 +6,65 @@
 #include <QDebug>
 #include <PlexDO.h>
 #pragma comment(lib,"lib/PlexDO.lib")
+#include <mmsystem.h>
+#pragma comment(lib,"winmm.lib")
 #include <time.h> // 2022-10-15, added by SONG, Zhiwei
 #include "Timebase.h"
-ThreadPlexon::ThreadPlexon(PlaxRat *parent) : QThread(), stopped(false), mutex(),mutex2(), bRecord(false), parent(parent) 
+ThreadPlexon::ThreadPlexon(PlaxRat *parent)
+	: QThread()
+	, bRecord(false)
+	, parent(parent)
+	, stopped(false)
+	, connector(nullptr)
 {
+	qRegisterMetaType<QVector<double>>("QVector<double>");
+	connect(
+		this,
+		&ThreadPlexon::binReady,
+		this,
+		&ThreadPlexon::processBin,
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::toneFlagReady, parent,
+		[parent](int value) { parent->setTone(value); },
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::trialStartReady, parent,
+		[parent]() { parent->setStart(); },
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::holdingReady, parent,
+		[parent](bool value) { parent->setHolding(value); },
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::reachingReady, parent,
+		[parent](bool value) { parent->setReaching(value); },
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::failReady, parent,
+		[parent]() { parent->setFail(); },
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::successReady, parent,
+		[parent]() { parent->setSucceed(); },
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::importantMessageReady, parent,
+		[parent](const QString& message) {
+			parent->setImportantMessage(message);
+		},
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::recordReady, parent,
+		[parent](const QString& message) {
+			parent->getRecordStream() << message << endl;
+		},
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::behaviorRecordReady, parent,
+		[parent](const QString& message) {
+			parent->getBehaviorTrainingStream() << message << endl;
+		},
+		Qt::QueuedConnection);
+	connect(this, &ThreadPlexon::playSoundReady, parent,
+		[](const QString& fileName) {
+			const QByteArray nativeName = fileName.toLocal8Bit();
+			PlaySoundA(nativeName.constData(), NULL, SND_ASYNC);
+		},
+		Qt::QueuedConnection);
+	trialTypeSnapshot.store(parent->trialType);
+	behaviorTrainingSnapshot.store(parent->recordBehaviorFlag);
 	connector = new PlexonConnector{ this };
 	//connector = new PlexonConnector();
 	connect(parent, SIGNAL(onTestChannel(uint)), this, SLOT(onTestChannel(uint)));
@@ -17,21 +72,35 @@ ThreadPlexon::ThreadPlexon(PlaxRat *parent) : QThread(), stopped(false), mutex()
 
 void ThreadPlexon::setToneFlag(int inputFlag)
 {
-	parent->setTone(inputFlag);
+	emit toneFlagReady(inputFlag);
 }
 
 ThreadPlexon::~ThreadPlexon() 
 {
-	
+	stop();
+	wait();
+	delete connector;
+	connector = nullptr;
 }
 
 void ThreadPlexon::record(const QString & message) 
 {
-	parent->getRecordStream() << message << endl;
+	emit recordReady(message);
+}
+
+void ThreadPlexon::recordBehaviorEvent(const QString& message)
+{
+	emit behaviorRecordReady(message);
+}
+
+void ThreadPlexon::playSound(const QString& fileName)
+{
+	emit playSoundReady(fileName);
 }
 
 void ThreadPlexon::run() 
 {
+	timeBeginPeriod(1);
 	while (connector->isConnected() && !isStopped()) {
 		{
 			QMutexLocker locker(&mutex);
@@ -47,6 +116,7 @@ void ThreadPlexon::run()
 		connector->receivePlaybackSignal(parent->decodeFromFileName);
 		//msleep(100);
 	}
+	timeEndPeriod(1);
 }
 
 void ThreadPlexon::playback(QString filename)
@@ -56,7 +126,7 @@ void ThreadPlexon::playback(QString filename)
 
 void ThreadPlexon::startTrial()
 {
-	parent->setStart();
+	emit trialStartReady();
 }
 
 void ThreadPlexon::setCue(int leftOrRight)
@@ -65,13 +135,13 @@ void ThreadPlexon::setCue(int leftOrRight)
 
 void ThreadPlexon::setHolding(bool flag)
 {
-		parent->setHolding(flag);
+	emit holdingReady(flag);
 }
 
 // 2022-03-31, add Reaching area, add by TAN, Jieyuan
 void ThreadPlexon::setReaching(bool flag)
 {
-	parent->setReaching(flag);
+	emit reachingReady(flag);
 }
 // add end
 
@@ -82,31 +152,36 @@ void ThreadPlexon::setAction(int leftOrRight)
 
 void ThreadPlexon::setFail()
 {
-	parent->setFail();
+	emit failReady();
 }
 
 void ThreadPlexon::setSuccess()
 {
-	parent->setSucceed();
+	emit successReady();
 }
 
-void ThreadPlexon::refreshBin(uint newTime)
+void ThreadPlexon::publishBin(
+	const QVector<double>& channelCounts,
+	uint newTime,
+	int toneFlag)
 {
-	QMutexLocker locker(&mutex2);
-	auto bin = connector->channelFiringRate;
-	for (auto i = 0; i != bin.n_elem; i++) {
-		parent->SetSpkCount(i, (int)bin(i));
-	}
-	parent->setInput(bin,newTime);
-	parent->refreshTime(newTime);
+	emit binReady(channelCounts, newTime, toneFlag);
 }
 
 // 2017-10-29 Zhang Xiang added
-void ThreadPlexon::refreshBin(uint newTime,int toneFlag)
+void ThreadPlexon::processBin(
+	QVector<double> channelCounts,
+	uint newTime,
+	int toneFlag)
 {
+	trialTypeSnapshot.store(parent->trialType);
+	behaviorTrainingSnapshot.store(parent->recordBehaviorFlag);
 	isWrongPressFeedback = parent->isWrongPressFeedback; // 2022-12-04, added by SONG, Zhiwei
 	QMutexLocker locker(&mutex2);
-	auto bin = connector->channelFiringRate;
+	vec bin(channelCounts.size());
+	for (int i = 0; i < channelCounts.size(); ++i) {
+		bin(i) = channelCounts[i];
+	}
 	if (parent->getCurrentState() == "Wait" && !connector->isQueueEmpty())
 		emptyConnectorQueue();
 	if (parent->getCurrentState() == "Idle" && !connector->isQueueEmpty())
@@ -688,16 +763,16 @@ void ThreadPlexon::emptyConnectorQueue()
 
 void ThreadPlexon::setImportantMessage(QString message) 
 { 
-	parent->setImportantMessage(message); 
+	emit importantMessageReady(message);
 }
 
 int ThreadPlexon::getTrialType()
 {
-	return parent->trialType;
+	return trialTypeSnapshot.load();
 }
 
 bool ThreadPlexon::getBehaviorTrainingFlag() {
-	return parent->recordBehaviorFlag;
+	return behaviorTrainingSnapshot.load();
 }
 
 QTextStream& ThreadPlexon::getBehaviorRecord() {

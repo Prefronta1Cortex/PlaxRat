@@ -93,7 +93,15 @@ PlaxRat::PlaxRat(QWidget *parent)
 
 PlaxRat::~PlaxRat()
 {
-	
+	if (thrdPlexon != nullptr) {
+		thrdPlexon->stop();
+		thrdPlexon->wait();
+		QCoreApplication::removePostedEvents(
+			thrdPlexon,
+			QEvent::MetaCall);
+		delete thrdPlexon;
+		thrdPlexon = nullptr;
+	}
 }
 
 void PlaxRat::setupLegacyDisplay()
@@ -383,13 +391,15 @@ void PlaxRat::on_btnDecodeFromFile_clicked()
 	if (!fileName.isEmpty()) {
 		isDecodeFromFile = true;
 		decodeFromFileName =fileName;
-		if (thrdTimerId == 0) {
+		if (thrdPlexon == nullptr) {
 			thrdPlexon = new ThreadPlexon{this};
 			////thrdPlexon->setRecord(bRecord);
 			//tester = new MatTester(this);
 			//tester->virtualConnect();
 			//thrdTimerId = startTimer(20);
-			thrdPlexon->start();
+		}
+		if (!thrdPlexon->isRunning()) {
+			thrdPlexon->start(QThread::HighPriority);
 		}
 	}
 	qDebug() << "filename=" << fileName;
@@ -400,7 +410,16 @@ void PlaxRat::on_btnPause_clicked()
 {
 	if (thrdPlexon != nullptr) {
 		thrdPlexon->stop();
+		thrdPlexon->wait();
+		QCoreApplication::sendPostedEvents(
+			thrdPlexon,
+			QEvent::MetaCall);
+		delete thrdPlexon;
 		thrdPlexon = nullptr;
+	}
+	if (thrdTimerId != 0) {
+		killTimer(thrdTimerId);
+		thrdTimerId = 0;
 	}
 	ui.btnConnect->setDisabled(false);
 	ui.btnPause->setDisabled(true);
@@ -908,19 +927,17 @@ void PlaxRat::timerEvent(QTimerEvent * event)
 
 void PlaxRat::on_btnConnect_clicked() 
 {
-	if (thrdTimerId == 0) {
+	if (thrdPlexon == nullptr) {
 		thrdPlexon = new ThreadPlexon{ this };
 		//thrdPlexon->setRecord(bRecord);
 		//tester=new MatTester(this);
 		//tester->virtualConnect();
-		thrdTimerId = startTimer(
-			PlaxTime::AcquisitionPollMs,
-			Qt::PreciseTimer);
-		//thrdPlexon->start();
-		ui.editResponseTime->setText(QString::number(thrdPlexon->trialResponseTimeLimit));		// 2021-10-06, add by SONG,Zhiwei
-		ui.editHoldingCueFreq->setText(QString::number(holdingCueFre));		// 2024-01-27, add by SONG,Zhiwei
-
 	}
+	if (!thrdPlexon->isRunning()) {
+		thrdPlexon->start(QThread::HighPriority);
+	}
+	ui.editResponseTime->setText(QString::number(thrdPlexon->trialResponseTimeLimit));		// 2021-10-06, add by SONG,Zhiwei
+	ui.editHoldingCueFreq->setText(QString::number(holdingCueFre));		// 2024-01-27, add by SONG,Zhiwei
 	ui.btnConnect->setDisabled(true);
 	ui.btnPause->setDisabled(false);
 
