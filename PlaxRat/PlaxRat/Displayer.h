@@ -3,6 +3,7 @@
 
 
 #include "QCustomPlot\qcustomplot.h"
+#include "Plexon\Timebase.h"
 
 #include <QPen>
 #include <QString>
@@ -15,7 +16,8 @@ class Displayer
 public:
 	Displayer(PlaxRat *parent, QCustomPlot *plotter, QCustomPlot *plotter2, QCustomPlot *plotter3);
 	~Displayer();
-	static const int MaxPlotCount = 400;
+	static const int MaxPlotCount =
+		PlaxTime::binsForMilliseconds(40000);
 
 private:
 	PlaxRat* parent;
@@ -48,6 +50,7 @@ private:
 public:
 	void refresh();
 	void refresh(int toneFlag);
+	void syncGraphs();
 	void setNewPredictValue(double value) { newPredictValue = value; }
 	void setNewRealValue(double value) { newRealValue = value; }
 	void setNewState(const QString &stateName);
@@ -64,8 +67,8 @@ class Displayer_2D
 public:
 	Displayer_2D(PlaxRat *parent, QCustomPlot *plotter);
 	~Displayer_2D();
-	//static const int PlotTime= 5; // make it a changeable value 20210312 sx
-	int PlotTime = 5;
+	// Preserve the legacy 500 ms trajectory window at 10 ms per sample.
+	int PlotTime = PlaxTime::binsForMilliseconds(500);
 
 private:
 	PlaxRat* parent;
@@ -77,6 +80,7 @@ private:
 	double newPredictValue2;
 	bool showThresholdFlag;
 	double newState;
+	int lastToneFlag = 0;
 
 	//QCPGraph *xItemLowSuccess1;
 	//QCPGraph *xItemLowSuccess2;
@@ -104,6 +108,9 @@ private:
 public:
 	void refresh_2D();
 	void refresh_2D(int toneFlag);
+	void syncGraphs_2D();
+	void setPlotTime(int plotTime);
+	int getPlotTime() const { return PlotTime; }
 	void setNewPredictValue(double value) { newPredictValue = value; }
 	//void setNewRealValue(double value) { newRealValue = value; }
 	void setNewState_2D(const QString &stateName);

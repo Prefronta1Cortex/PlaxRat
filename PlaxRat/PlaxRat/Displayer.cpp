@@ -114,13 +114,9 @@ void Displayer::refresh()
 	predictValues.push_back(newPredictValue);
 	marks.pop_front();
 	marks.push_back(newState);
-	plotter->graph(0)->setData(indexes, realValues);
-	plotter->graph(1)->setData(indexes, predictValues);
-	plotter->graph(2)->setData(indexes, marks);
 	//newRealValue = 0;
 	newPredictValue = 0;
 	newState = -3;
-	emit parent->replot();
 	//qDebug() << "Out" << __func__;
 
 }
@@ -144,26 +140,15 @@ void Displayer::refresh(int toneFlag)
 		marks.pop_front();
 		marks.push_back(newState);
 
-		//plotter->graph(0)->setData(indexes, realValues);
-		plotter->graph(1)->setData(indexes, predictValues);
-		plotter->graph(2)->setData(indexes, marks);
-
 		predictValues2.pop_front();
 		predictValues2.push_back(0);
 		marks2.pop_front();
 		marks2.push_back(-3);
 
-		//plotter2->graph(3)->setData(indexes, realValues2);
-		plotter2->graph(4)->setData(indexes, predictValues2);
-		plotter2->graph(5)->setData(indexes, marks2);
-
-
 		predictValues3.pop_front();     //add third cue
 		predictValues3.push_back(0);
 		marks3.pop_front();
 		marks3.push_back(-3);
-		plotter3->graph(7)->setData(indexes, predictValues3);
-		plotter3->graph(8)->setData(indexes, marks3);
 		
 	}
 	else if (toneFlag == 2){
@@ -173,27 +158,15 @@ void Displayer::refresh(int toneFlag)
 		marks.pop_front();
 		marks.push_back(-3);
 
-		//plotter->graph(0)->setData(indexes, realValues);
-		plotter->graph(1)->setData(indexes, predictValues);
-		plotter->graph(2)->setData(indexes, marks);
-
-
 		predictValues2.pop_front();
 		predictValues2.push_back(newPredictValue);
 		marks2.pop_front();
 		marks2.push_back(newState);
-
-		//plotter2->graph(3)->setData(indexes, realValues2);
-		plotter2->graph(4)->setData(indexes, predictValues2);
-		plotter2->graph(5)->setData(indexes, marks2);
 		
 		predictValues3.pop_front();
 		predictValues3.push_back(0);
 		marks3.pop_front();
 		marks3.push_back(-3);
-
-		plotter3->graph(7)->setData(indexes, predictValues3);
-		plotter3->graph(8)->setData(indexes, marks3);
 	}
 
 	else if (toneFlag == 3) {                    //add third case
@@ -204,34 +177,35 @@ void Displayer::refresh(int toneFlag)
 		marks.pop_front();
 		marks.push_back(-3);
 
-		//plotter->graph(0)->setData(indexes, realValues);
-		plotter->graph(1)->setData(indexes, predictValues);
-		plotter->graph(2)->setData(indexes, marks);
-
 		predictValues2.pop_front();
 		predictValues2.push_back(0);
 		marks2.pop_front();
 		marks2.push_back(-3);
 
-		//plotter2->graph(3)->setData(indexes, realValues2);
-		plotter2->graph(4)->setData(indexes, predictValues2);
-		plotter2->graph(5)->setData(indexes, marks2);
-
 		predictValues3.pop_front();
 		predictValues3.push_back(newPredictValue);
 		marks3.pop_front();
 		marks3.push_back(newState);
-		plotter3->graph(7)->setData(indexes, predictValues3);
-		plotter3->graph(8)->setData(indexes, marks3);
 	}
 
 	//newRealValue = 0;
 	newPredictValue = 0;
 	newState = -3;
-
-	emit parent->replot();
 	
 	//qDebug() << "Out" << __func__;
+}
+
+void Displayer::syncGraphs()
+{
+	plotter->graph(0)->setData(indexes, realValues);
+	plotter->graph(1)->setData(indexes, predictValues);
+	plotter->graph(2)->setData(indexes, marks);
+	plotter2->graph(3)->setData(indexes, realValues2);
+	plotter2->graph(4)->setData(indexes, predictValues2);
+	plotter2->graph(5)->setData(indexes, marks2);
+	plotter3->graph(6)->setData(indexes, realValues3);
+	plotter3->graph(7)->setData(indexes, predictValues3);
+	plotter3->graph(8)->setData(indexes, marks3);
 }
 // 2017-10-29 Zhang Xiang added end
 
@@ -351,6 +325,7 @@ Displayer_2D::~Displayer_2D()
 void Displayer_2D::refresh_2D()
 {
 	//qDebug() << "In" << __func__ << newRealValue << newPredictValue << newState;
+	lastToneFlag = 0;
 
 	predictValues.pop_front();
 	predictValues.push_back(newPredictValue);
@@ -358,13 +333,9 @@ void Displayer_2D::refresh_2D()
 	predictValues2.pop_front();
 	predictValues2.push_back(newPredictValue2);
 
-	plotter->graph(0)->setData(predictValues, predictValues2);
 	//plotter->graph(2)->setData(indexes, marks);
 	//newRealValue = 0;
 	//newPredictValue = 0;
-
-	newState = -3;
-	emit parent->replot();
 	//qDebug() << "Out" << __func__;
 
 }
@@ -378,16 +349,22 @@ void Displayer_2D::showBrainControlThreshold_2D(bool flag)
 // 2021-01-15 SX added
 void Displayer_2D::refresh_2D(int toneFlag)
 {
-	
+	lastToneFlag = toneFlag;
+	predictValues.pop_front();
+	predictValues.push_back(newPredictValue);
+	predictValues2.pop_front();
+	predictValues2.push_back(newPredictValue2);
+	newPredictValue = 0;
+	newPredictValue2 = 0;
+}
+
+void Displayer_2D::syncGraphs_2D()
+{
+	const int toneFlag = lastToneFlag;
+	plotter->graph(0)->setData(predictValues, predictValues2);
+
 	//qDebug() << "In" << __func__ << newRealValue << newPredictValue << newState;
-	if (toneFlag == 1) {				
-
-		predictValues.pop_front();
-		predictValues.push_back(newPredictValue);
-		predictValues2.pop_front();
-		predictValues2.push_back(newPredictValue2);
-		plotter->graph(0)->setData(predictValues, predictValues2);
-
+	if (toneFlag == 1) {
 
 		if (showThresholdFlag)
 		{
@@ -507,12 +484,6 @@ void Displayer_2D::refresh_2D(int toneFlag)
 	}
 	else if (toneFlag ==2) {  //low cue low circle
 
-		predictValues.pop_front();
-		predictValues.push_back(newPredictValue);
-		predictValues2.pop_front();
-		predictValues2.push_back(newPredictValue2);
-
-		plotter->graph(0)->setData(predictValues, predictValues2);
 		if (showThresholdFlag)
 		{
 			QVector<double> x1(200), y11(200), y12(200), x2(200), y21(200), y22(200), x3(200), y31(200), y32(200),x4(200), y41(200), y42(200);
@@ -625,13 +596,6 @@ void Displayer_2D::refresh_2D(int toneFlag)
 	// 2022-12-10, added by SONG, Zhiwei
 		else if (toneFlag == 3&&parent->trialType==BC_three_lever) {  //tone=3
 
-			predictValues.pop_front();
-			predictValues.push_back(newPredictValue);
-			predictValues2.pop_front();
-			predictValues2.push_back(newPredictValue2);
-
-			plotter->graph(0)->setData(predictValues, predictValues2);
-
 			if (showThresholdFlag)
 			{
 				QVector<double> x1(200), y11(200), y12(200), x2(200), y21(200), y22(200), x3(200), y31(200), y32(200), x4(200), y41(200), y42(200);
@@ -738,12 +702,32 @@ void Displayer_2D::refresh_2D(int toneFlag)
 
 		}
 	//newRealValue = 0;
-	newPredictValue = 0;
 	newState = -3;
-
-	emit parent->replot();
 	
 	//qDebug() << "Out" << __func__;
+}
+
+void Displayer_2D::setPlotTime(int plotTime)
+{
+	if (plotTime < 1) {
+		plotTime = 1;
+	}
+
+	while (predictValues.size() > plotTime) {
+		predictValues.pop_front();
+		predictValues2.pop_front();
+	}
+	while (predictValues.size() < plotTime) {
+		predictValues.push_front(0);
+		predictValues2.push_front(0);
+	}
+
+	PlotTime = plotTime;
+	indexes.resize(PlotTime);
+	for (int i = 0; i < PlotTime; ++i) {
+		indexes[i] = i;
+	}
+	plotter->graph(0)->setData(predictValues, predictValues2);
 }
 
 

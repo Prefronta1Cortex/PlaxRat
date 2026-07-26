@@ -3,9 +3,11 @@
 
 #include <QtWidgets/QMainWindow>
 #include "ui_plaxrat.h"
+#include "Plexon\Timebase.h"
 #include "Plexon\threadplexon.hpp"
 #include <QFile>
 #include <QTextStream>
+#include <QTimer>
 #include "Paradigm.h"
 #include "Decoder\Decoder.h"
 #include "Displayer.h"
@@ -111,10 +113,19 @@ public slots:
 	void on_wrongPressFeedback_stateChanged(int state); //2022-12-04, added by SONG, Zhiwei
 	void on_editResponseTime_editingFinished();	// 2021-10-02, , add by SONG, Zhiwei
 	void on_editHoldingCueFreq_editingFinished();	// 2024-01-27,, add by SONG, Zhiwei
+	void refreshLegacyDisplay();
+	void refreshTimingDiagnostics();
+	void on_btnResetTiming_clicked();
 private:
+	void setupLegacyDisplay();
+	void setupTimingDiagnostics();
 	Ui::PlaxRatClass ui;
-	ThreadPlexon *thrdPlexon;
+	ThreadPlexon *thrdPlexon = nullptr;
+	QTimer *legacyDisplayTimer;
+	QTimer *timingUiTimer;
 	QLabel *spkCount[MaxChannelCount];
+	int latestSpkCount[MaxChannelCount] = {};
+	bool legacyDisplayDirty = false;
 	bool bRecord;
 	QTextStream recordStream, recordStreamOfDecoder, recordStreamOfActivity,recordStreamOfDescription,behaviorTrainingStream;
 	QFile recordFile, recordFileOfDecoder,recordFileOfDescription,behaviorTrainingFile;
@@ -206,7 +217,7 @@ public:
 	void setTone(int inputTone) { tone=inputTone; }
 	int trialType = MC;
 	bool isDay2Holding = false; // 2024-01-22 add isDay2Holding, by SONG, Zhiwei
-	int holdingCueFre = 2;// 2024-01-27  by SONG, Zhiwei
+	int holdingCueFre = PlaxTime::binsForMilliseconds(200);// 2024-01-27  by SONG, Zhiwei
 	int holdTimeCnt = 0;
 	bool isDecodeStart = false;
 	

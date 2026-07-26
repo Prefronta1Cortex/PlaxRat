@@ -46,6 +46,23 @@ PlexonConnector::PlexonConnector(ThreadPlexon *thread) : channelFiringRate(MaxCh
 		return;
 	}
 	qDebug() << "MAPSampleRate = " << plexonRate;
+	ticksPerBin = static_cast<std::uint64_t>(plexonRate) *
+		PlaxTime::BinMs / 1000ULL;
+	qDebug() << "Bin width =" << PlaxTime::BinMs << "ms";
+	qDebug() << "Timestamp ticks per bin ="
+		<< static_cast<qulonglong>(ticksPerBin);
+	sdkPollingIntervalMs = PL_GetPollingInterval();
+	if (sdkPollingIntervalMs > 0) {
+		const int sdkSafeGuardMs =
+			sdkPollingIntervalMs + PlaxTime::BinMs;
+		if (sdkSafeGuardMs > deliveryGuardMs) {
+			deliveryGuardMs = sdkSafeGuardMs;
+		}
+	}
+	qDebug() << "Plexon SDK polling interval ="
+		<< sdkPollingIntervalMs;
+	qDebug() << "Bin finalization guard ="
+		<< deliveryGuardMs << "ms";
 
 	//** get the NIDAQ sampling rate
 	PL_GetSlowInfo(&NIDAQSampleRate, Dummy, Dummy); //** last two params are unused here
@@ -68,9 +85,236 @@ void PlexonConnector::inTick()
 	receivePlexonSignal();
 }
 
+TimingDiagnosticsSnapshot PlexonConnector::getTimingDiagnostics() const
+{
+	std::lock_guard<std::mutex> lock(timingMutex);
+	TimingDiagnosticsSnapshot snapshot;
+	snapshot.samples.assign(
+		timingSamples.begin(),
+		timingSamples.end());
+	snapshot.emittedBins = timingEmittedBins;
+	snapshot.zeroBins = timingZeroBins;
+	snapshot.backlogBins = timingBacklogBins;
+	snapshot.maximumBacklogBins = timingMaximumBacklogBins;
+	snapshot.lateSpikes = lateSpikeCount;
+	snapshot.pollingIntervalMs = sdkPollingIntervalMs;
+	snapshot.guardMs = deliveryGuardMs;
+	snapshot.started = binnerStarted;
+	return snapshot;
+}
+
+void PlexonConnector::resetTimingDiagnostics()
+{
+	std::lock_guard<std::mutex> lock(timingMutex);
+	timingSamples.clear();
+	hasPreviousEmitTime = false;
+	timingEmittedBins = 0;
+	timingZeroBins = 0;
+	timingBacklogBins = 0;
+	timingMaximumBacklogBins = 0;
+	lateSpikeCount = 0;
+}
+
 //int extEventCount = 0;
 int extEventArray[2];
 
+
+std::uint64_t PlexonConnector::getTimestampTicks(const PL_Event &event) const
+{
+	return (static_cast<std::uint64_t>(event.UpperTS) << 32) |
+		static_cast<std::uint64_t>(event.TimeStamp);
+}
+
+std::uint64_t PlexonConnector::getAbsoluteBin(const PL_Event &event) const
+{
+	return getTimestampTicks(event) / ticksPerBin;
+}
+
+unsigned int PlexonConnector::getSessionBin(std::uint64_t absoluteBin) const
+{
+	if (!binnerStarted || absoluteBin < firstOutputBin) {
+		return 0;
+	}
+
+	return static_cast<unsigned int>(absoluteBin - firstOutputBin + 1);
+}
+
+void PlexonConnector::initializeBinner(std::uint64_t firstEventTicks)
+{
+	clockStartTicks = firstEventTicks;
+	latestObservedTicks = firstEventTicks;
+
+	// If acquisition starts partway through a bin, skip only that partial
+	// bin. An event exactly on a boundary belongs to a complete first bin.
+	const std::uint64_t firstEventBin = firstEventTicks / ticksPerBin;
+	firstOutputBin = firstEventTicks % ticksPerBin == 0
+		? firstEventBin
+		: firstEventBin + 1;
+	nextBinToEmit = firstOutputBin;
+	pendingSpikeBins.clear();
+	channelFiringRate.zeros();
+	clockStartTime = SteadyClock::now();
+	resetTimingDiagnostics();
+	{
+		std::lock_guard<std::mutex> lock(timingMutex);
+		binnerStarted = true;
+	}
+
+	qDebug() << "10 ms binner started at Plexon bin"
+		<< static_cast<qulonglong>(firstOutputBin);
+}
+
+void PlexonConnector::addSpikeToBin(
+	const PL_Event &event,
+	std::uint64_t absoluteBin)
+{
+	if (absoluteBin < firstOutputBin) {
+		return;
+	}
+
+	if (absoluteBin < nextBinToEmit) {
+		unsigned int currentLateSpikeCount = 0;
+		{
+			std::lock_guard<std::mutex> lock(timingMutex);
+			currentLateSpikeCount = ++lateSpikeCount;
+		}
+		if (currentLateSpikeCount == 1 ||
+			currentLateSpikeCount % 100 == 0) {
+			qWarning() << "Late Plexon spikes ="
+				<< currentLateSpikeCount;
+		}
+		return;
+	}
+
+	std::map<std::uint64_t, vec>::iterator binIt =
+		pendingSpikeBins.find(absoluteBin);
+	if (binIt == pendingSpikeBins.end()) {
+		vec emptyBin(MaxChannelCount, fill::zeros);
+		binIt = pendingSpikeBins.insert(
+			std::make_pair(absoluteBin, emptyBin)).first;
+	}
+
+	const int channelIndex = event.Channel - 1;
+	binIt->second(channelIndex) += 1;
+}
+
+void PlexonConnector::emitOneBin(std::uint64_t absoluteBin)
+{
+	const SteadyClock::time_point now = SteadyClock::now();
+	channelFiringRate.zeros();
+
+	std::map<std::uint64_t, vec>::iterator binIt =
+		pendingSpikeBins.find(absoluteBin);
+	const bool isZeroBin = binIt == pendingSpikeBins.end();
+	if (binIt != pendingSpikeBins.end()) {
+		channelFiringRate = binIt->second;
+		pendingSpikeBins.erase(binIt);
+	}
+
+	const unsigned int sessionBin = getSessionBin(absoluteBin);
+	{
+		std::lock_guard<std::mutex> lock(timingMutex);
+		if (hasPreviousEmitTime) {
+			TimingSample sample;
+			sample.sessionBin = sessionBin;
+			sample.intervalMs =
+				std::chrono::duration<double, std::milli>(
+					now - previousEmitTime).count();
+			sample.zeroBin = isZeroBin;
+			sample.pendingBinCount = timingBacklogBins;
+			sample.lateSpikeCount = lateSpikeCount;
+			timingSamples.push_back(sample);
+			if (timingSamples.size() > MaxTimingSamples) {
+				timingSamples.pop_front();
+			}
+		}
+		previousEmitTime = now;
+		hasPreviousEmitTime = true;
+		++timingEmittedBins;
+		if (isZeroBin) {
+			++timingZeroBins;
+		}
+	}
+
+	currTime = static_cast<int>(sessionBin);
+	QVector<double> channelCounts(MaxChannelCount);
+	for (int channel = 0; channel < MaxChannelCount; ++channel) {
+		channelCounts[channel] = channelFiringRate(channel);
+	}
+	parent->publishBin(
+		channelCounts,
+		static_cast<unsigned int>(currTime),
+		toneFlag);
+}
+
+void PlexonConnector::flushCompletedBins()
+{
+	if (!binnerStarted) {
+		return;
+	}
+
+	const SteadyClock::duration elapsed =
+		SteadyClock::now() - clockStartTime;
+	const std::chrono::seconds wholeSeconds =
+		std::chrono::duration_cast<std::chrono::seconds>(elapsed);
+	const std::chrono::nanoseconds remainingNanoseconds =
+		std::chrono::duration_cast<std::chrono::nanoseconds>(
+			elapsed - wholeSeconds);
+	const std::uint64_t elapsedTicks =
+		static_cast<std::uint64_t>(wholeSeconds.count()) *
+			static_cast<std::uint64_t>(plexonRate)
+		+ static_cast<std::uint64_t>(remainingNanoseconds.count()) *
+			static_cast<std::uint64_t>(plexonRate) / 1000000000ULL;
+	const std::uint64_t clockEstimatedTicks =
+		clockStartTicks + elapsedTicks;
+	const std::uint64_t estimatedPlexonTicks =
+		clockEstimatedTicks > latestObservedTicks
+		? clockEstimatedTicks
+		: latestObservedTicks;
+	const std::uint64_t guardTicks =
+		static_cast<std::uint64_t>(plexonRate) *
+			deliveryGuardMs / 1000ULL;
+
+	if (estimatedPlexonTicks <= guardTicks) {
+		return;
+	}
+
+	const std::uint64_t watermarkTicks =
+		estimatedPlexonTicks - guardTicks;
+	const std::uint64_t firstIncompleteBin =
+		watermarkTicks / ticksPerBin;
+
+	// Emit every safe bin. Missing map entries become zero vectors.
+	{
+		std::lock_guard<std::mutex> lock(timingMutex);
+		timingBacklogBins = firstIncompleteBin > nextBinToEmit
+			? static_cast<std::size_t>(
+				firstIncompleteBin - nextBinToEmit)
+			: 0;
+		if (timingBacklogBins > timingMaximumBacklogBins) {
+			timingMaximumBacklogBins = timingBacklogBins;
+		}
+	}
+	int emittedBins = 0;
+	while (nextBinToEmit < firstIncompleteBin &&
+		emittedBins < PlaxTime::MaxBinsPerFlush) {
+		{
+			std::lock_guard<std::mutex> lock(timingMutex);
+			timingBacklogBins = static_cast<std::size_t>(
+				firstIncompleteBin - nextBinToEmit);
+		}
+		emitOneBin(nextBinToEmit);
+		++nextBinToEmit;
+		++emittedBins;
+	}
+	{
+		std::lock_guard<std::mutex> lock(timingMutex);
+		timingBacklogBins = firstIncompleteBin > nextBinToEmit
+			? static_cast<std::size_t>(
+				firstIncompleteBin - nextBinToEmit)
+			: 0;
+	}
+}
 
 bool PlexonConnector::receivePlexonSignal()
 {
@@ -79,13 +323,11 @@ bool PlexonConnector::receivePlexonSignal()
 	double responseTime; // 2022-10-02, added by SONG, Zhiwei
 	//** call the Server to get all the MAP events since the last time we called PL_GetTimeStampStructures
 	PL_GetTimeStampStructures(&numEvents, pEventBuffer); // 2017-11-01 ZX comment
+	std::unique_lock<std::mutex> queueLock(eventQueueMutex);
 
 	//      Copies the timestamp structures that the server transferred to MMF since
 	//          any of the PL_GetTimeStamp* or PL_GetWave* was called last time
-	//PL_GetTimeStampStructuresEx2(&numEvents, pEventBuffer, 0);
-
 	//qDebug() << "**********************Receiving Event count = " << numEvents;
-	//qDebug() << "pEventBuffer TimeStamp" << pEventBuffer[1].TimeStamp/(plexonRate / 10.0);
 	//QString s = QString(pEventBuffer[1].Type);
 	//qDebug() <<"Event type in String"<< s;
 	//int is = pEventBuffer[1].Type;
@@ -97,19 +339,24 @@ bool PlexonConnector::receivePlexonSignal()
 	//int extEventArray[2];
 	// 2017-10-23 Zhang Xiang added end
 
+	if (!binnerStarted && numEvents > 0) {
+		initializeBinner(getTimestampTicks(pEventBuffer[0]));
+	}
+
 	//** step through the array of MAP events, displaying only the NIDAQ samples
 	for (int eventIndex = 0; eventIndex < numEvents; eventIndex++) {
+		PL_Event &event = pEventBuffer[eventIndex];
+		const std::uint64_t eventTicks = getTimestampTicks(event);
+		if (eventTicks > latestObservedTicks) {
+			latestObservedTicks = eventTicks;
+			clockStartTicks = eventTicks;
+			clockStartTime = SteadyClock::now();
+		}
+		const std::uint64_t absoluteBin = getAbsoluteBin(event);
+		const unsigned int eventTime = getSessionBin(absoluteBin);
 		//int is = pEventBuffer[eventIndex].Type;
 		//qDebug() << "Event type in Int" << is;
-		//¸üÐÂÊ±¼ä¼ÙÉèevent°´Ê±¼äË³Ðò´«¹ýÀ´
-		unsigned int eventTime = (int)(pEventBuffer[eventIndex].TimeStamp / (plexonRate / 10.0));
-		//qDebug() << "here";
-		if (eventTime > currTime) {	  		// read data per 100 ms
-			currTime = eventTime;
-			parent->refreshBin(currTime, toneFlag);
-			channelFiringRate.zeros();
-		}
-		//parent->refreshBin(eventTime, toneFlag);
+		//ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½eventï¿½ï¿½Ê±ï¿½ï¿½Ë³ï¿½ò´«¹ï¿½ï¿½ï¿½
 		if (parent->getTrialType() == MC) {
 			//2022-12-12 debug
 			//qDebug() << "here is the MC part";
@@ -138,7 +385,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setSuccessfulTrialIndicator(true);
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Success," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Success,%1").arg(eventTime));
 							}
 						}
 						else if (extEventArray[1] == 4) {  // Lever not held
@@ -146,7 +394,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setFail();
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Early release," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Early release,%1").arg(eventTime));
 							}
 							pressFlag = 0; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -156,7 +405,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->startTrial();
 							parent->trialStartFlag = true;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Start," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Start,%1").arg(eventTime));
 							}
 							omissionFlag = false;//   2022-10-02, add by SONG, Zhiwei
 							parent->startTime = clock();//   2022-10-02,add by SONG, Zhiwei
@@ -170,7 +420,8 @@ bool PlexonConnector::receivePlexonSignal()
 							// add end
 							parent->setHolding(true);
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Press," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Press,%1").arg(eventTime));
 							}
 							pressFlag = 1; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -190,7 +441,8 @@ bool PlexonConnector::receivePlexonSignal()
 							if (!omissionFlag) {
 								if (pressFlag) {
 									if (parent->isWrongPressFeedback) {
-										PlaySoundA("wav files\\1.5kHz25msSmall.wav", NULL, SND_ASYNC);
+										parent->playSound(
+											"wav files\\1.5kHz25msSmall.wav");
 									}
 									//qDebug() << "isWrongPressFeedback:" << parent->isWrongPressFeedback
 								}
@@ -199,7 +451,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setFail();
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Omission," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Omission,%1").arg(eventTime));
 							}
 							pressFlag = 0; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -210,7 +463,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setSuccessfulTrialIndicator(true);
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Success," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Success,%1").arg(eventTime));
 							}
 						}
 						else if (extEventArray[1] == 4) {  // Lever not held
@@ -218,7 +472,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setFail();
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Early release," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Early release,%1").arg(eventTime));
 							}
 							pressFlag = 0; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -228,7 +483,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->startTrial();
 							parent->trialStartFlag = true;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Start," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Start,%1").arg(eventTime));
 							}
 							omissionFlag = false;
 							parent->startTime = clock();
@@ -243,7 +499,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setHolding(true);
 
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Press," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Press,%1").arg(eventTime));
 							}
 							pressFlag = 1; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -263,7 +520,8 @@ bool PlexonConnector::receivePlexonSignal()
 								if (pressFlag) {
 									// 2000
 									if (parent->isWrongPressFeedback) {
-										PlaySoundA("wav files\\10kHz25msSmall.wav", NULL, SND_ASYNC);
+										parent->playSound(
+											"wav files\\10kHz25msSmall.wav");
 									}
 
 									//qDebug() << "isWrongPressFeedback:" << parent->isWrongPressFeedback;
@@ -273,7 +531,8 @@ bool PlexonConnector::receivePlexonSignal()
 							parent->setFail();
 							parent->trialStartFlag = false;
 							if (parent->getBehaviorTrainingFlag()) {
-								parent->getBehaviorRecord() << "Omission," << eventTime << endl;
+								parent->recordBehaviorEvent(
+									QString("Omission,%1").arg(eventTime));
 							}
 							pressFlag = 0; //   2022-09-24, add by SONG, Zhiwei
 						}
@@ -531,20 +790,20 @@ bool PlexonConnector::receivePlexonSignal()
 		}
 		// 2022-12-10 SONG, Zhiwei add end
 
-		if (pEventBuffer[eventIndex].Type == PL_SingleWFType &&
-			pEventBuffer[eventIndex].Unit > 0 &&			// unsorted   2026.1.8 ks, delete unsorted spike from KF
-			pEventBuffer[eventIndex].Unit <= 4 &&
-			pEventBuffer[eventIndex].Channel <= MaxChannelCount) {
-			auto chid = pEventBuffer[eventIndex].Channel - 1;
-
-			channelFiringRate(chid) = channelFiringRate(chid) + 1;
-
-			logResult(pEventBuffer[eventIndex]);
+		if (event.Type == PL_SingleWFType &&
+			event.Unit > 0 &&			// unsorted   2026.1.8 ks, delete unsorted spike from KF
+			event.Unit <= 4 &&
+			event.Channel > 0 &&
+			event.Channel <= MaxChannelCount) {
+			addSpikeToBin(event, absoluteBin);
+			logResult(event);
 			//qDebug() << "Receiving PL_SingleWFType";
 			//qDebug() << pEventBuffer[eventIndex].Channel << pEventBuffer[eventIndex].Unit<<endl;
 		}
 
 	}
+	queueLock.unlock();
+	flushCompletedBins();
 	return true;
 }
 
@@ -779,12 +1038,16 @@ void PlexonConnector::receivePlaybackSignal(QString filename)
 
 		if (count == MaxChannelCount + 2) {
 			count = 0;
-			parent->refreshBin(currTime, toneFlag);
+			QVector<double> channelCounts(MaxChannelCount);
+			for (int channel = 0; channel < MaxChannelCount; ++channel) {
+				channelCounts[channel] = channelFiringRate(channel);
+			}
+			parent->publishBin(channelCounts, currTime, toneFlag);
 			//qDebug() << "233";
 			//qDebug() << currTime;
 			//qDebug() << "toneFlag is" <<toneFlag;
 			currTime++;
-			Sleep(100);
+			Sleep(PlaxTime::BinMs);
 			//break;
 		}
 	}
@@ -795,18 +1058,19 @@ void PlexonConnector::logResult(PL_Event & info)
 {
 	if (!parent->bRecord)
 		return;
-	if (info.Type == PL_ExtEventType) {
-		QString eventInfo = QString("%1  %2  %3").arg((int)(info.TimeStamp / (plexonRate / 10.0))).arg(info.Channel).arg(info.Unit);
-		parent->record(eventInfo);
-	}
-	else if (info.Type == PL_SingleWFType) {
-		QString eventInfo = QString("%1   %2   %3").arg((int)(info.TimeStamp / (plexonRate / 10.0))).arg(info.Channel).arg(info.Unit);
-		parent->record(eventInfo);
-	}
+
+	const std::uint64_t absoluteBin = getAbsoluteBin(info);
+	const unsigned int sessionBin = getSessionBin(absoluteBin);
+	const QString eventInfo = QString("%1 %2 %3")
+		.arg(sessionBin)
+		.arg(info.Channel)
+		.arg(info.Unit);
+	parent->record(eventInfo);
 }
 
 void PlexonConnector::emptyQueues()
 {
+	std::lock_guard<std::mutex> lock(eventQueueMutex);
 	while (!leverQueue.empty())
 		leverQueue.pop();
 	while (!actionQueue.empty())
@@ -815,6 +1079,7 @@ void PlexonConnector::emptyQueues()
 
 bool PlexonConnector::isQueueEmpty()
 {
+	std::lock_guard<std::mutex> lock(eventQueueMutex);
 	if (leverQueue.empty() && actionQueue.empty())
 		return true;
 	else
