@@ -66,8 +66,15 @@ PlaxRat::PlaxRat(QWidget *parent)
 	displayer_Y = new Displayer(this, ui.pltDisplayer_Y, ui.pltDisplayer_Y, ui.pltDisplayer_Y);
 	displayer_2D = new Displayer_2D(this, ui.pltDisplayer_2D);
 	thrdPlexon = new ThreadPlexon(this);
+	connect(
+		thrdPlexon,
+		SIGNAL(rlppResultReady(bool,uint,QVector<double>,QVector<double>,QVector<double>,int,double)),
+		this,
+		SLOT(onRlppResultReady(bool,uint,QVector<double>,QVector<double>,QVector<double>,int,double)),
+		Qt::QueuedConnection);
 	setupLegacyDisplay();
 	setupTimingDiagnostics();
+	setupRlppDiagnostics();
 	on_editLag_editingFinished();
 	on_editTrainSize_editingFinished();
 	startToTrain = false;
@@ -171,6 +178,120 @@ void PlaxRat::setupTimingDiagnostics()
 	connect(timingUiTimer, SIGNAL(timeout()),
 		this, SLOT(refreshTimingDiagnostics()));
 	timingUiTimer->start(200);
+}
+
+void PlaxRat::setupRlppDiagnostics()
+{
+	rlppDock = ui.dockRlppDiagnostics;
+	rlppStatusLabel = ui.lblRlppStatus;
+	rlppModelLabel = ui.lblRlppModel;
+	rlppMappingLabel = ui.lblRlppMapping;
+	rlppBinLabel = ui.lblRlppBin;
+	rlppInferenceLabel = ui.lblRlppInference;
+	rlppOutputLabels[0] = ui.lblRlppM1_12;
+	rlppOutputLabels[1] = ui.lblRlppM1_5;
+	rlppOutputLabels[2] = ui.lblRlppM1_3;
+	rlppOutputLabels[3] = ui.lblRlppM1_10;
+	rlppOutputLabels[4] = ui.lblRlppM1_9;
+	rlppProbabilityLabels[0] = ui.lblRlppProbability12;
+	rlppProbabilityLabels[1] = ui.lblRlppProbability5;
+	rlppProbabilityLabels[2] = ui.lblRlppProbability3;
+	rlppProbabilityLabels[3] = ui.lblRlppProbability10;
+	rlppProbabilityLabels[4] = ui.lblRlppProbability9;
+	rlppDecoderScoreLabels[0] = ui.lblRlppScoreRest;
+	rlppDecoderScoreLabels[1] = ui.lblRlppScoreLow;
+	rlppDecoderScoreLabels[2] = ui.lblRlppScoreHigh;
+
+	setDockNestingEnabled(true);
+	splitDockWidget(
+		ui.dockTimingDiagnostics,
+		rlppDock,
+		Qt::Horizontal);
+
+	QMenu *viewMenu = nullptr;
+	const QList<QAction *> menuActions = ui.menuBar->actions();
+	for (int index = 0; index < menuActions.size(); ++index) {
+		if (menuActions[index]->menu() &&
+			menuActions[index]->text() == "View") {
+			viewMenu = menuActions[index]->menu();
+			break;
+		}
+	}
+	if (viewMenu != nullptr) {
+		viewMenu->addAction(rlppDock->toggleViewAction());
+	}
+
+	rlppUiTimer = new QTimer(this);
+	connect(rlppUiTimer, SIGNAL(timeout()),
+		this, SLOT(refreshRlppDiagnostics()));
+	rlppUiTimer->start(200);
+	rlppDock->raise();
+}
+
+void PlaxRat::refreshRlppDiagnostics()
+{
+	if (rlppDock == nullptr) {
+		return;
+	}
+
+	const bool enabled =
+		thrdPlexon != nullptr && thrdPlexon->isRlppEnabled();
+	if (!enabled) {
+		rlppStatusLabel->setText("DISABLED");
+		rlppStatusLabel->setStyleSheet(
+			"QLabel { background-color: rgb(110, 110, 110); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
+		rlppBinLabel->setText("--");
+		rlppInferenceLabel->setText("-- ms");
+		for (int index = 0; index < 5; ++index) {
+			rlppOutputLabels[index]->setText("--");
+			rlppProbabilityLabels[index]->setText("--");
+		}
+		for (int index = 0; index < 3; ++index) {
+			rlppDecoderScoreLabels[index]->setText("--");
+		}
+		return;
+	}
+
+	if (!latestRlppResultValid) {
+		rlppStatusLabel->setText("WARMING UP");
+		rlppStatusLabel->setStyleSheet(
+			"QLabel { background-color: rgb(110, 110, 110); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
+		return;
+	}
+
+	rlppStatusLabel->setText("RUNNING");
+	rlppStatusLabel->setStyleSheet(
+		"QLabel { background-color: rgb(35, 145, 70); "
+		"color: white; font-weight: bold; border: 1px solid gray; }");
+	rlppBinLabel->setText(QString::number(latestRlppTimeBin));
+	rlppInferenceLabel->setText(
+		QString("%1 ms").arg(
+			latestRlppInferenceMilliseconds,
+			0,
+			'f',
+			3));
+
+	for (int index = 0; index < 5; ++index) {
+		const QString spike =
+			index < latestRlppGeneratedM1.size()
+			? QString::number(latestRlppGeneratedM1[index], 'f', 0)
+			: QString("--");
+		const QString probability =
+			index < latestRlppProbabilities.size()
+			? QString::number(latestRlppProbabilities[index], 'f', 3)
+			: QString("--");
+		rlppOutputLabels[index]->setText(spike);
+		rlppProbabilityLabels[index]->setText(probability);
+	}
+	for (int index = 0; index < 3; ++index) {
+		const QString score =
+			index < latestRlppDecoderScores.size()
+			? QString::number(latestRlppDecoderScores[index], 'f', 3)
+			: QString("--");
+		rlppDecoderScoreLabels[index]->setText(score);
+	}
 }
 
 void PlaxRat::refreshTimingDiagnostics()
@@ -449,7 +570,7 @@ void PlaxRat::on_btnStartTrial_pressed()// high cue
 	}
 	
 	cntTotalTrial++;
-	//TODO: 给行为箱发数据
+	//TODO: ???????????
 
 
 	//qDebug() << numDOCards;
@@ -549,7 +670,7 @@ void PlaxRat::on_btnStartTrial3_pressed()
 	}
 
 	cntTotalTrial++;
-	//TODO: 给行为箱发数据
+	//TODO: ???????????
 
 
 	//qDebug() << numDOCards;
@@ -692,6 +813,24 @@ void PlaxRat::SetSpkCount(int index, int value)
 	if (index >= 0 && index < MaxChannelCount) {
 		latestSpkCount[index] = value;
 	}
+}
+
+void PlaxRat::onRlppResultReady(
+	bool valid,
+	uint timeBin,
+	QVector<double> generatedM1,
+	QVector<double> probabilities,
+	QVector<double> decoderScores,
+	int behaviorLabel,
+	double inferenceMilliseconds)
+{
+	latestRlppResultValid = valid;
+	latestRlppTimeBin = timeBin;
+	latestRlppGeneratedM1 = generatedM1;
+	latestRlppProbabilities = probabilities;
+	latestRlppDecoderScores = decoderScores;
+	latestRlppBehaviorLabel = behaviorLabel;
+	latestRlppInferenceMilliseconds = inferenceMilliseconds;
 }
 
 void PlaxRat::refreshLegacyDisplay()

@@ -6,12 +6,15 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1530</width>
+    <width>1880</width>
     <height>779</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>PlaxRat</string>
+  </property>
+  <property name="dockNestingEnabled">
+   <bool>true</bool>
   </property>
   <widget class="QWidget" name="centralWidget">
    <property name="minimumSize">
@@ -2252,7 +2255,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1530</width>
+     <width>1880</width>
      <height>21</height>
     </rect>
    </property>
@@ -2276,7 +2279,7 @@
    </property>
    <property name="minimumSize">
     <size>
-     <width>320</width>
+     <width>340</width>
      <height>400</height>
     </size>
    </property>
@@ -2432,6 +2435,280 @@
         <set>Qt::AlignCenter</set>
        </property>
       </widget>
+     </item>
+    </layout>
+   </widget>
+  </widget>
+  <widget class="QDockWidget" name="dockRlppDiagnostics">
+   <property name="geometry">
+    <rect>
+     <x>1520</x>
+     <y>21</y>
+     <width>340</width>
+     <height>430</height>
+    </rect>
+   </property>
+   <property name="minimumSize">
+    <size>
+     <width>340</width>
+     <height>300</height>
+    </size>
+   </property>
+   <property name="allowedAreas">
+    <set>Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea</set>
+   </property>
+   <property name="features">
+    <set>QDockWidget::DockWidgetClosable|QDockWidget::DockWidgetFloatable|QDockWidget::DockWidgetMovable</set>
+   </property>
+   <property name="windowTitle">
+    <string>RLPP</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>2</number>
+   </attribute>
+   <widget class="QWidget" name="dockRlppContents">
+    <layout class="QVBoxLayout" name="verticalLayoutRlpp">
+     <item>
+      <widget class="QLabel" name="lblRlppStatus">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>40</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>DISABLED</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lblRlppModel">
+       <property name="text">
+        <string>Model: top5_binary_m1 | Bin: 10 ms</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lblRlppMapping">
+       <property name="text">
+        <string>Output: 12, 5, 3, 10, 9
+Decoder: 3, 5, 9, 10, 12</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lblRlppBin">
+       <property name="text">
+        <string>Latest bin: --</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lblRlppInference">
+       <property name="text">
+        <string>Inference: -- ms</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QGridLayout" name="gridLayoutRlppOutput">
+       <item row="0" column="0">
+        <widget class="QLabel" name="labelRlppChannel">
+         <property name="text">
+          <string>Channel</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QLabel" name="labelRlppSpike">
+         <property name="text">
+          <string>Spike</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="2">
+        <widget class="QLabel" name="labelRlppProbability">
+         <property name="text">
+          <string>Probability</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="labelRlppM1_12">
+         <property name="text">
+          <string>M1-12</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QLabel" name="lblRlppM1_12">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="2">
+        <widget class="QLabel" name="lblRlppProbability12">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="labelRlppM1_5">
+         <property name="text">
+          <string>M1-5</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QLabel" name="lblRlppM1_5">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="2">
+        <widget class="QLabel" name="lblRlppProbability5">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="labelRlppM1_3">
+         <property name="text">
+          <string>M1-3</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QLabel" name="lblRlppM1_3">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="2">
+        <widget class="QLabel" name="lblRlppProbability3">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="labelRlppM1_10">
+         <property name="text">
+          <string>M1-10</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="1">
+        <widget class="QLabel" name="lblRlppM1_10">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="2">
+        <widget class="QLabel" name="lblRlppProbability10">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="0">
+        <widget class="QLabel" name="labelRlppM1_9">
+         <property name="text">
+          <string>M1-9</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="1">
+        <widget class="QLabel" name="lblRlppM1_9">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="2">
+        <widget class="QLabel" name="lblRlppProbability9">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QGridLayout" name="gridLayoutRlppScores">
+       <item row="0" column="0">
+        <widget class="QLabel" name="labelRlppScore">
+         <property name="text">
+          <string>Decoder score</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QLabel" name="labelRlppScoreValue">
+         <property name="text">
+          <string>Value</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="labelRlppRest">
+         <property name="text">
+          <string>Rest</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QLabel" name="lblRlppScoreRest">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="labelRlppLow">
+         <property name="text">
+          <string>Low</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QLabel" name="lblRlppScoreLow">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="labelRlppHigh">
+         <property name="text">
+          <string>High</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QLabel" name="lblRlppScoreHigh">
+         <property name="text">
+          <string>--</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </item>
     </layout>
    </widget>

@@ -1,9 +1,12 @@
 ﻿#include "threadplexon.hpp"
 #include <Shlobj.h>
 #include "PlexonConnecter.h"
+#include "../RLPP/RlppBridge.h"
 #include "plaxrat.h"
 #include <qtextstream.h>
 #include <QDebug>
+#include <QCoreApplication>
+#include <QDir>
 #include <PlexDO.h>
 #pragma comment(lib,"lib/PlexDO.lib")
 #include <mmsystem.h>
@@ -65,6 +68,26 @@ ThreadPlexon::ThreadPlexon(PlaxRat *parent)
 		Qt::QueuedConnection);
 	trialTypeSnapshot.store(parent->trialType);
 	behaviorTrainingSnapshot.store(parent->recordBehaviorFlag);
+	QString modelRoot =
+		QCoreApplication::applicationDirPath() +
+		"/RLPP/models/top5_binary_m1/best_overall";
+	if (!QDir(modelRoot).exists()) {
+		modelRoot =
+			QDir::currentPath() +
+			"/RLPP/models/top5_binary_m1/best_overall";
+	}
+	if (QDir(modelRoot).exists()) {
+		try {
+			rlppBridge = RlppBridge::createFromDirectories(
+				(modelRoot + "/generator").toStdString(),
+				(modelRoot + "/decoder").toStdString());
+			rlppEnabled.store(true);
+			qDebug() << "RLPP bridge enabled from" << modelRoot;
+		}
+		catch (const std::exception& error) {
+			qWarning() << "RLPP bridge disabled:" << error.what();
+		}
+	}
 	connector = new PlexonConnector{ this };
 	//connector = new PlexonConnector();
 	connect(parent, SIGNAL(onTestChannel(uint)), this, SLOT(onTestChannel(uint)));
@@ -165,6 +188,40 @@ void ThreadPlexon::publishBin(
 	uint newTime,
 	int toneFlag)
 {
+	if (rlppBridge) {
+		std::vector<double> fullBin(channelCounts.size(), 0.0);
+		for (int channel = 0;
+			channel < channelCounts.size();
+			++channel) {
+			fullBin[channel] = channelCounts[channel];
+		}
+		try {
+			const RlppBridgeStepResult result =
+				rlppBridge->step(fullBin, static_cast<int>(newTime));
+			const QVector<double> generatedM1 =
+				QVector<double>::fromStdVector(
+					result.inference.generatedM1);
+			const QVector<double> probabilities =
+				QVector<double>::fromStdVector(
+					result.inference.generatorProbabilities);
+			const QVector<double> decoderScores =
+				QVector<double>::fromStdVector(
+					result.inference.decoderScores);
+			emit rlppResultReady(
+				result.valid,
+				newTime,
+				generatedM1,
+				probabilities,
+				decoderScores,
+				result.inference.behaviorLabelOneBased,
+				result.inferenceMilliseconds);
+		}
+		catch (const std::exception& error) {
+			qWarning() << "RLPP inference disabled:" << error.what();
+			rlppEnabled.store(false);
+			rlppBridge.reset();
+		}
+	}
 	emit binReady(channelCounts, newTime, toneFlag);
 }
 
@@ -773,6 +830,11 @@ int ThreadPlexon::getTrialType()
 
 bool ThreadPlexon::getBehaviorTrainingFlag() {
 	return behaviorTrainingSnapshot.load();
+}
+
+bool ThreadPlexon::isRlppEnabled() const
+{
+	return rlppEnabled.load();
 }
 
 QTextStream& ThreadPlexon::getBehaviorRecord() {

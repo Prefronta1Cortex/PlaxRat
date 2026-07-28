@@ -1056,7 +1056,7 @@ void PlexonConnector::receivePlaybackSignal(QString filename)
 //void PlexonConnector::logResult(PL_WaveLong & info)
 void PlexonConnector::logResult(PL_Event & info)
 {
-	if (!parent->bRecord)
+	if (!parent->bRecord.load())
 		return;
 
 	const std::uint64_t absoluteBin = getAbsoluteBin(info);

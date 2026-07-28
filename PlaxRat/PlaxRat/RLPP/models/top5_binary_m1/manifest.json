@@ -1,0 +1,92 @@
+{
+  "bundle_name": "top5_binary_m1_rlpp",
+  "bin_ms": 10,
+  "upstream_physical_channels": [
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32
+  ],
+  "inactive_upstream_physical_channel": 27,
+  "output_physical_channels": [
+    12,
+    5,
+    3,
+    10,
+    9
+  ],
+  "decoder_feature_order": [
+    3,
+    5,
+    9,
+    10,
+    12
+  ],
+  "relevant_spikes": 5,
+  "decay_bins": 150,
+  "decoder_history_bins": 60,
+  "generator_hidden_units": 64,
+  "selected_by": "maximum training reward, then held-out test success",
+  "overall_best": {
+    "fold": 0,
+    "retrain": "retrain30_seed5519",
+    "source": "/Volumes/Asparagus/RLPP Stuff/RLPP-master/C++_New/experiments/top5_m1/training/training_results/fold0/retrain30_seed5519",
+    "max_reward": 0.943985,
+    "max_reward_episode": 4223,
+    "test_success_rate": 0.760442
+  },
+  "folds": [
+    {
+      "fold": 0,
+      "retrain": "retrain30_seed5519",
+      "source": "/Volumes/Asparagus/RLPP Stuff/RLPP-master/C++_New/experiments/top5_m1/training/training_results/fold0/retrain30_seed5519",
+      "max_reward": 0.943985,
+      "max_reward_episode": 4223,
+      "test_success_rate": 0.760442
+    },
+    {
+      "fold": 1,
+      "retrain": "retrain15_seed5504",
+      "source": "/Volumes/Asparagus/RLPP Stuff/RLPP-master/C++_New/experiments/top5_m1/training/training_results/fold1/retrain15_seed5504",
+      "max_reward": 0.902532,
+      "max_reward_episode": 4564,
+      "test_success_rate": 0.665661
+    },
+    {
+      "fold": 2,
+      "retrain": "retrain15_seed5504",
+      "source": "/Volumes/Asparagus/RLPP Stuff/RLPP-master/C++_New/experiments/top5_m1/training/training_results/fold2/retrain15_seed5504",
+      "max_reward": 0.938646,
+      "max_reward_episode": 4311,
+      "test_success_rate": 0.761311
+    },
+    {
+      "fold": 3,
+      "retrain": "retrain25_seed5514",
+      "source": "/Volumes/Asparagus/RLPP Stuff/RLPP-master/C++_New/experiments/top5_m1/training/training_results/fold3/retrain25_seed5514",
+      "max_reward": 0.867296,
+      "max_reward_episode": 4399,
+      "test_success_rate": 0.726363
+    },
+    {
+      "fold": 4,
+      "retrain": "retrain05_seed5494",
+      "source": "/Volumes/Asparagus/RLPP Stuff/RLPP-master/C++_New/experiments/top5_m1/training/training_results/fold4/retrain05_seed5494",
+      "max_reward": 0.91875,
+      "max_reward_episode": 4905,
+      "test_success_rate": 0.688112
+    }
+  ]
+}

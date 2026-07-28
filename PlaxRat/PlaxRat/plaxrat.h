@@ -6,6 +6,7 @@
 #include "Plexon\Timebase.h"
 #include "Plexon\threadplexon.hpp"
 #include <QFile>
+#include <QVector>
 #include <QTextStream>
 #include <QTimer>
 #include "Paradigm.h"
@@ -21,6 +22,8 @@
 
 class Displayer;
 class MatTester;
+class QDockWidget;
+class QLabel;
 
 class PlaxRat : public QMainWindow
 {
@@ -114,11 +117,21 @@ public slots:
 	void on_editResponseTime_editingFinished();	// 2021-10-02, , add by SONG, Zhiwei
 	void on_editHoldingCueFreq_editingFinished();	// 2024-01-27,, add by SONG, Zhiwei
 	void refreshLegacyDisplay();
+	void refreshRlppDiagnostics();
+	void onRlppResultReady(
+		bool valid,
+		uint timeBin,
+		QVector<double> generatedM1,
+		QVector<double> probabilities,
+		QVector<double> decoderScores,
+		int behaviorLabel,
+		double inferenceMilliseconds);
 	void refreshTimingDiagnostics();
 	void on_btnResetTiming_clicked();
 private:
 	void setupLegacyDisplay();
 	void setupTimingDiagnostics();
+	void setupRlppDiagnostics();
 	Ui::PlaxRatClass ui;
 	ThreadPlexon *thrdPlexon = nullptr;
 	QTimer *legacyDisplayTimer;
@@ -126,6 +139,23 @@ private:
 	QLabel *spkCount[MaxChannelCount];
 	int latestSpkCount[MaxChannelCount] = {};
 	bool legacyDisplayDirty = false;
+	bool latestRlppResultValid = false;
+	uint latestRlppTimeBin = 0;
+	QVector<double> latestRlppGeneratedM1;
+	QVector<double> latestRlppProbabilities;
+	QVector<double> latestRlppDecoderScores;
+	int latestRlppBehaviorLabel = 0;
+	double latestRlppInferenceMilliseconds = 0.0;
+	QDockWidget *rlppDock = nullptr;
+	QTimer *rlppUiTimer = nullptr;
+	QLabel *rlppStatusLabel = nullptr;
+	QLabel *rlppModelLabel = nullptr;
+	QLabel *rlppMappingLabel = nullptr;
+	QLabel *rlppBinLabel = nullptr;
+	QLabel *rlppInferenceLabel = nullptr;
+	QLabel *rlppOutputLabels[5] = {};
+	QLabel *rlppProbabilityLabels[5] = {};
+	QLabel *rlppDecoderScoreLabels[3] = {};
 	bool bRecord;
 	QTextStream recordStream, recordStreamOfDecoder, recordStreamOfActivity,recordStreamOfDescription,behaviorTrainingStream;
 	QFile recordFile, recordFileOfDecoder,recordFileOfDescription,behaviorTrainingFile;

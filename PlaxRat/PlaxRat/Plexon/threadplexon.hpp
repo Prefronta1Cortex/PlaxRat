@@ -7,9 +7,11 @@
 #include "Timebase.h"
 #include <QTextStream>
 #include <atomic>
+#include <memory>
 
 class PlaxRat;
 class PlexonConnector;
+class RlppBridge;
 struct TimingDiagnosticsSnapshot;
 
 class ThreadPlexon : public QThread {
@@ -23,7 +25,7 @@ public:
 	void stop() { QMutexLocker locker(&mutex); stopped = true; }
 	bool isStopped() { QMutexLocker locker(&mutex); return stopped; }
 	void setRecord(bool bRecord) { QMutexLocker locker(&mutex); this->bRecord = bRecord; }
-	bool bRecord;
+	std::atomic<bool> bRecord{false};
 	void record(const QString &message);
 	void recordBehaviorEvent(const QString &message);
 	std::atomic<bool> successfulTrialIndicator{false};
@@ -77,6 +79,7 @@ public:
 	bool SetVolumeLevel(double nVolume, bool bScalar);			// 2022-03-31, change volume based on rdRatio, add by TAN, Jieyuan
 	void setImportantMessage(QString message);
 	void playSound(const QString& fileName);
+	bool isRlppEnabled() const;
 	void publishBin(
 		const QVector<double>& channelCounts,
 		uint newTime,
@@ -128,4 +131,16 @@ signals:
 	void recordReady(QString message);
 	void behaviorRecordReady(QString message);
 	void playSoundReady(QString fileName);
+	void rlppResultReady(
+		bool valid,
+		uint timeBin,
+		QVector<double> generatedM1,
+		QVector<double> probabilities,
+		QVector<double> decoderScores,
+		int behaviorLabel,
+		double inferenceMilliseconds);
+
+private:
+	std::unique_ptr<RlppBridge> rlppBridge;
+	std::atomic<bool> rlppEnabled{false};
 };

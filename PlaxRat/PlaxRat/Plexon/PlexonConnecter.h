@@ -11,6 +11,7 @@
 #include <iostream>
 #include <QFile>
 #include <QTextStream>
+#include <QVector>
 #include "Timebase.h"
 class PL_Event;
 typedef unsigned long DWORD;
