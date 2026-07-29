@@ -1,10 +1,37 @@
 #pragma once
 
 #include <cstddef>
-#include <optional>
 #include <vector>
 
 namespace rlpp {
+
+// Small C++11-compatible replacement for the one optional value used by the
+// batch preprocessing API. Live inference does not use this field, but the
+// shared Matrix/preprocess header is included by the runtime.
+class OptionalVector
+{
+public:
+    OptionalVector()
+        : present_(false) {}
+
+    bool has_value() const {
+        return present_;
+    }
+
+    const std::vector<double>& operator*() const {
+        return value_;
+    }
+
+    OptionalVector& operator=(const std::vector<double>& value) {
+        value_ = value;
+        present_ = true;
+        return *this;
+    }
+
+private:
+    bool present_;
+    std::vector<double> value_;
+};
 
 class Matrix {
 public:
@@ -33,7 +60,7 @@ struct PreprocessOptions {
 
     // Optional deterministic trial order from a reference exporter. If omitted,
     // trials are kept in sorted order until the fixture harness supplies RNG parity.
-    std::optional<std::vector<double>> trialOrderOverride;
+    OptionalVector trialOrderOverride;
 };
 
 struct PreprocessResult {

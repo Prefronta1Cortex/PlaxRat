@@ -190,7 +190,11 @@ Matrix reorder_rows_by_index(const Matrix& spikes, const std::vector<int>& index
     for (std::size_t i = 0; i < indexesOneBased.size(); ++i) {
         order.emplace_back(indexesOneBased[i], i);
     }
-    std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b) {
+    std::stable_sort(
+        order.begin(),
+        order.end(),
+        [](const std::pair<int, std::size_t>& a,
+           const std::pair<int, std::size_t>& b) {
         return a.first < b.first;
     });
 

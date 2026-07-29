@@ -95,8 +95,8 @@ the legacy PlaxRat path continues running.
 
 ## Compatibility notes
 
-The new files avoid Qt and C++20-only APIs. However, the RLPP headers currently
-include `std::optional`, so the selected compiler must provide C++17 library
-support or the RLPP core must receive a compatibility adaptation. The
-`RlppModelLoader` deliberately avoids `std::filesystem` and uses standard file
-streams so it can be added to the existing VS/Qt project more easily.
+The new files avoid Qt and C++20-only APIs. The vendored `preprocess.hpp`
+replaces its unused batch-preprocessing `std::optional` field with a small
+C++11-compatible `OptionalVector`, allowing the live runtime subset to compile
+with the older lab toolchain. The `RlppModelLoader` deliberately avoids
+`std::filesystem` and uses standard file streams.
