@@ -1,7 +1,7 @@
 #pragma once
 
-#include "rlpp/decoder.hpp"
-#include "rlpp/preprocess.hpp"
+#include "rlpp_decoder.hpp"
+#include "rlpp_preprocess.hpp"
 
 #include <cstddef>
 #include <cstdint>

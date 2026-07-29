@@ -9,13 +9,13 @@ The required C++ runtime sources are copied into this folder from the newer
 RLPP implementation:
 
 ```text
-rlpp/inference.hpp
-rlpp/decoder.hpp
-rlpp/preprocess.hpp
+rlpp/rlpp_inference.hpp
+rlpp/rlpp_decoder.hpp
+rlpp/rlpp_preprocess.hpp
 
-src/inference.cpp
-src/decoder.cpp
-src/preprocess.cpp
+src/rlpp_inference.cpp
+src/rlpp_decoder.cpp
+src/rlpp_preprocess.cpp
 ```
 
 The RLPP training-only `ann.cpp` is not required by the live inference bridge.

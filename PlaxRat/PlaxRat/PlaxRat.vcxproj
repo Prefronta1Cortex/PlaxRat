@@ -213,9 +213,9 @@
     <ClCompile Include="Plexon\threadplexon.cpp" />
     <ClCompile Include="RLPP\RlppBridge.cpp" />
     <ClCompile Include="RLPP\RlppModelLoader.cpp" />
-    <ClCompile Include="RLPP\src\decoder.cpp" />
-    <ClCompile Include="RLPP\src\inference.cpp" />
-    <ClCompile Include="RLPP\src\preprocess.cpp" />
+    <ClCompile Include="RLPP\src\rlpp_decoder.cpp" />
+    <ClCompile Include="RLPP\src\rlpp_inference.cpp" />
+    <ClCompile Include="RLPP\src\rlpp_preprocess.cpp" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="plaxrat.h">
@@ -269,9 +269,9 @@
     <ClInclude Include="Plexon\Timebase.h" />
     <ClInclude Include="RLPP\RlppBridge.h" />
     <ClInclude Include="RLPP\RlppModelLoader.h" />
-    <ClInclude Include="RLPP\rlpp\decoder.hpp" />
-    <ClInclude Include="RLPP\rlpp\inference.hpp" />
-    <ClInclude Include="RLPP\rlpp\preprocess.hpp" />
+    <ClInclude Include="RLPP\rlpp\rlpp_decoder.hpp" />
+    <ClInclude Include="RLPP\rlpp\rlpp_inference.hpp" />
+    <ClInclude Include="RLPP\rlpp\rlpp_preprocess.hpp" />
     <ClInclude Include="resource.h" />
     <CustomBuild Include="qcustomplot.h" />
     <CustomBuild Include="QCustomPlot\qcustomplot.h">

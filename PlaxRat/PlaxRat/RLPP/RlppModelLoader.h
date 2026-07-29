@@ -1,6 +1,6 @@
 #pragma once
 
-#include "rlpp/inference.hpp"
+#include "rlpp/rlpp_inference.hpp"
 
 #include <string>
 #include <vector>
