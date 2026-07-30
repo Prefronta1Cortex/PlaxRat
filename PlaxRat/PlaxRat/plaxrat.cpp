@@ -205,6 +205,9 @@ void PlaxRat::setupRlppDiagnostics()
 	rlppDecoderScoreLabels[0] = ui.lblRlppScoreRest;
 	rlppDecoderScoreLabels[1] = ui.lblRlppScoreLow;
 	rlppDecoderScoreLabels[2] = ui.lblRlppScoreHigh;
+	rlppKalmanStatusLabel = ui.lblRlppKalmanStatus;
+	rlppKalmanXLabel = ui.lblRlppKalmanX;
+	rlppKalmanYLabel = ui.lblRlppKalmanY;
 
 	setDockNestingEnabled(true);
 	splitDockWidget(
@@ -289,6 +292,9 @@ void PlaxRat::refreshRlppDiagnostics()
 		for (int index = 0; index < 3; ++index) {
 			rlppDecoderScoreLabels[index]->setText("--");
 		}
+		rlppKalmanStatusLabel->setText("DISABLED");
+		rlppKalmanXLabel->setText("--");
+		rlppKalmanYLabel->setText("--");
 		return;
 	}
 
@@ -297,6 +303,10 @@ void PlaxRat::refreshRlppDiagnostics()
 		rlppStatusLabel->setStyleSheet(
 			"QLabel { background-color: rgb(110, 110, 110); "
 			"color: white; font-weight: bold; border: 1px solid gray; }");
+		rlppKalmanStatusLabel->setText(
+			rlppKalmanEnabled ? "WARMING UP" : "MODEL MISSING");
+		rlppKalmanXLabel->setText("--");
+		rlppKalmanYLabel->setText("--");
 		return;
 	}
 
@@ -330,6 +340,20 @@ void PlaxRat::refreshRlppDiagnostics()
 			? QString::number(latestRlppDecoderScores[index], 'f', 3)
 			: QString("--");
 		rlppDecoderScoreLabels[index]->setText(score);
+	}
+
+	if (latestRlppKalmanResultValid) {
+		rlppKalmanStatusLabel->setText("RUNNING");
+		rlppKalmanXLabel->setText(
+			QString::number(latestRlppKalmanX, 'f', 3));
+		rlppKalmanYLabel->setText(
+			QString::number(latestRlppKalmanY, 'f', 3));
+	}
+	else {
+		rlppKalmanStatusLabel->setText(
+			rlppKalmanEnabled ? "WARMING UP" : "MODEL MISSING");
+		rlppKalmanXLabel->setText("--");
+		rlppKalmanYLabel->setText("--");
 	}
 }
 
@@ -870,6 +894,7 @@ void PlaxRat::onRlppResultReady(
 	latestRlppDecoderScores = decoderScores;
 	latestRlppBehaviorLabel = behaviorLabel;
 	latestRlppInferenceMilliseconds = inferenceMilliseconds;
+	latestRlppKalmanResultValid = false;
 
 	if (!rlppKalmanEnabled ||
 		rlppKalmanDecoder == nullptr ||
@@ -894,6 +919,9 @@ void PlaxRat::onRlppResultReady(
 	const vec result = rlppKalmanDecoder->tryDecode(
 		rlppKalmanBinWithTap,
 		{1, 1});
+	latestRlppKalmanX = result[0];
+	latestRlppKalmanY = result[1];
+	latestRlppKalmanResultValid = true;
 	displayer_X->setNewPredictValue(result[0]);
 	displayer_Y->setNewPredictValue(result[1]);
 	displayer_2D->setNewPredictValue(result[0]);

@@ -158,6 +158,12 @@ private:
 	QLabel *rlppOutputLabels[5] = {};
 	QLabel *rlppProbabilityLabels[5] = {};
 	QLabel *rlppDecoderScoreLabels[3] = {};
+	QLabel *rlppKalmanStatusLabel = nullptr;
+	QLabel *rlppKalmanXLabel = nullptr;
+	QLabel *rlppKalmanYLabel = nullptr;
+	bool latestRlppKalmanResultValid = false;
+	double latestRlppKalmanX = 0.0;
+	double latestRlppKalmanY = 0.0;
 	DecoderKalman *rlppKalmanDecoder = nullptr;
 	vec rlppKalmanBinWithTap;
 	bool rlppKalmanEnabled = false;
