@@ -811,7 +811,8 @@ void PlexonConnector::receivePlaybackSignal(QString filename)
 {
 	ifstream fin(filename.toStdString().c_str());
 
-	currTime = 0;
+	// RLPP uses contiguous one-based playback bins.
+	currTime = 1;
 	const int LINE_LENGTH = 100;
 	char str[LINE_LENGTH];
 	int count = 0;
