@@ -212,6 +212,7 @@
     <ClCompile Include="QCustomPlot\qcustomplot.cpp" />
     <ClCompile Include="Plexon\threadplexon.cpp" />
     <ClCompile Include="RLPP\RlppBridge.cpp" />
+    <ClCompile Include="RLPP\RlppKalmanTarget.cpp" />
     <ClCompile Include="RLPP\RlppModelLoader.cpp" />
     <ClCompile Include="RLPP\src\rlpp_decoder.cpp" />
     <ClCompile Include="RLPP\src\rlpp_inference.cpp" />
@@ -268,6 +269,7 @@
     <ClInclude Include="Plexon\PlexonConnecter.h" />
     <ClInclude Include="Plexon\Timebase.h" />
     <ClInclude Include="RLPP\RlppBridge.h" />
+    <ClInclude Include="RLPP\RlppKalmanTarget.h" />
     <ClInclude Include="RLPP\RlppModelLoader.h" />
     <ClInclude Include="RLPP\rlpp\rlpp_decoder.hpp" />
     <ClInclude Include="RLPP\rlpp\rlpp_inference.hpp" />

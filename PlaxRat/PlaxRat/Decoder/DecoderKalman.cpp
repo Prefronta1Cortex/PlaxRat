@@ -71,10 +71,14 @@ bool DecoderKalman::LoadFromMat(MATFile * pMat)
 		CHECK_MAT(H);
 		R = read_mat(pMat, "R");
 		CHECK_MAT(R);
-		mat a = read_mat(pMat, "trainSize");
-		decodeTrainSize = a(0);
 		mat b = read_mat(pMat, "tap");
 		lag = b(0);
+		if (lag <= 0 || H.n_rows == 0 || H.n_rows % lag != 0) {
+			return false;
+		}
+		inputChannelCount = static_cast<int>(H.n_rows / lag);
+		mat a = read_mat(pMat, "trainSize");
+		decodeTrainSize = a(0);
 		//K = read_mat(pMat, "K");
 		//CHECK_MAT(K);
 
@@ -244,20 +248,20 @@ mat DecoderKalman::computeInverseMatrix(mat &X)
 mat DecoderKalman::GenerateInputWithTap(int tap,int bias, mat &X)
 {
 	mat inputMat=mat(0,0);
-	vec inputVec = vec(PlaxRat::MaxChannelCount*(tap + 1) + bias,fill::zeros);
+	vec inputVec = vec(inputChannelCount*(tap + 1) + bias,fill::zeros);
 	int nx = X.n_rows;
 	int dx = X.n_cols;
 	for (int iRow = 0; iRow < nx; iRow++) {
 		inputVec.zeros();
-		for (int jCol = 0; jCol < PlaxRat::MaxChannelCount*tap; jCol++) {
-			inputVec(jCol) = inputVec(jCol + PlaxRat::MaxChannelCount);
+		for (int jCol = 0; jCol < inputChannelCount*tap; jCol++) {
+			inputVec(jCol) = inputVec(jCol + inputChannelCount);
 		}
-		for (int jCol = 0; jCol < PlaxRat::MaxChannelCount; jCol++) {
-			inputVec(jCol + PlaxRat::MaxChannelCount*tap) = X(iRow, jCol);
+		for (int jCol = 0; jCol < inputChannelCount; jCol++) {
+			inputVec(jCol + inputChannelCount*tap) = X(iRow, jCol);
 		}
 		if (bias)
 		{
-			inputVec(PlaxRat::MaxChannelCount*(tap + 1)) = 1;
+			inputVec(inputChannelCount*(tap + 1)) = 1;
 		}
 		inputMat = join_cols(inputMat, trans(inputVec));
 	}

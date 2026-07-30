@@ -9,6 +9,7 @@
 #include "MatTester.h"
 #include "Plexon\Timebase.h"
 #include "Plexon\PlexonConnecter.h"
+#include "RLPP\RlppKalmanTarget.h"
 #include <algorithm>
 #include <QMenu>
 
@@ -75,6 +76,7 @@ PlaxRat::PlaxRat(QWidget *parent)
 	setupLegacyDisplay();
 	setupTimingDiagnostics();
 	setupRlppDiagnostics();
+	setupRlppKalman();
 	on_editLag_editingFinished();
 	on_editTrainSize_editingFinished();
 	startToTrain = false;
@@ -109,6 +111,8 @@ PlaxRat::~PlaxRat()
 		delete thrdPlexon;
 		thrdPlexon = nullptr;
 	}
+	delete rlppKalmanDecoder;
+	rlppKalmanDecoder = nullptr;
 }
 
 void PlaxRat::setupLegacyDisplay()
@@ -226,6 +230,41 @@ void PlaxRat::setupRlppDiagnostics()
 		this, SLOT(refreshRlppDiagnostics()));
 	rlppUiTimer->start(200);
 	rlppDock->raise();
+}
+
+void PlaxRat::setupRlppKalman()
+{
+	const QStringList modelCandidates = QStringList()
+		<< QCoreApplication::applicationDirPath() +
+			"/RLPP/models/top5_binary_m1/best_overall/kalman_verifier.mat"
+		<< QDir::currentPath() +
+			"/RLPP/models/top5_binary_m1/best_overall/kalman_verifier.mat";
+
+	for (int index = 0; index < modelCandidates.size(); ++index) {
+		const QString modelPath = modelCandidates[index];
+		if (!QFileInfo::exists(modelPath)) {
+			continue;
+		}
+
+		DecoderKalman *candidate = new DecoderKalman();
+		if (candidate->LoadMatFile(modelPath.toStdString()) &&
+			candidate->getInputChannelCount() == 5 &&
+			candidate->lag == 8) {
+			candidate->bTrained = true;
+			rlppKalmanDecoder = candidate;
+			rlppKalmanBinWithTap.zeros(5 * candidate->lag);
+			rlppKalmanEnabled = true;
+			rlppModelLabel->setText(
+				"Top-5 RLPP + 5-channel Kalman verifier");
+			qDebug() << "RLPP Kalman verifier loaded from" << modelPath;
+			return;
+		}
+		delete candidate;
+	}
+
+	rlppModelLabel->setText(
+		"Top-5 RLPP | Kalman verifier model unavailable");
+	qDebug() << "RLPP Kalman verifier model was not found";
 }
 
 void PlaxRat::refreshRlppDiagnostics()
@@ -831,6 +870,34 @@ void PlaxRat::onRlppResultReady(
 	latestRlppDecoderScores = decoderScores;
 	latestRlppBehaviorLabel = behaviorLabel;
 	latestRlppInferenceMilliseconds = inferenceMilliseconds;
+
+	if (!rlppKalmanEnabled ||
+		rlppKalmanDecoder == nullptr ||
+		!valid ||
+		generatedM1.size() != 5) {
+		return;
+	}
+
+	// RLPP publishes [12, 5, 3, 10, 9]. The verifier was trained in
+	// numerical channel order [3, 5, 9, 10, 12].
+	static const int outputToDecoderOrder[5] = { 2, 1, 4, 3, 0 };
+	for (int index = 0; index < 5 * (rlppKalmanDecoder->lag - 1); ++index) {
+		rlppKalmanBinWithTap(index) =
+			rlppKalmanBinWithTap(index + 5);
+	}
+	for (int index = 0; index < 5; ++index) {
+		rlppKalmanBinWithTap(
+			5 * (rlppKalmanDecoder->lag - 1) + index) =
+			generatedM1[outputToDecoderOrder[index]];
+	}
+
+	const vec result = rlppKalmanDecoder->tryDecode(
+		rlppKalmanBinWithTap,
+		{1, 1});
+	displayer_X->setNewPredictValue(result[0]);
+	displayer_Y->setNewPredictValue(result[1]);
+	displayer_2D->setNewPredictValue(result[0]);
+	displayer_2D->setNewPredictValue2(result[1]);
 }
 
 void PlaxRat::refreshLegacyDisplay()
@@ -1081,6 +1148,18 @@ void PlaxRat::on_btnConnect_clicked()
 	ui.btnPause->setDisabled(false);
 
 }
+
+mat PlaxRat::GenerateOutputForRlppKalman(
+	int outputBinNumber,
+	int tone,
+	int HoldingTime)
+{
+	return rlpp::kalman::generateTarget(
+		outputBinNumber,
+		tone,
+		HoldingTime);
+}
+
 /*
 vec PlaxRat::GenerateOutputForKalman(int outputBinNumber)
 {

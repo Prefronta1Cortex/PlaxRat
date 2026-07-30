@@ -1,0 +1,41 @@
+{
+  "model_name": "top5_binary_m1_kalman_verifier",
+  "source_mat": "/Volumes/Asparagus/RLPP Stuff/Mat Data/250923.mat",
+  "physical_channels": [
+    3,
+    5,
+    9,
+    10,
+    12
+  ],
+  "decoder_feature_order": [
+    3,
+    5,
+    9,
+    10,
+    12
+  ],
+  "binary_m1": true,
+  "bin_ms": 10,
+  "history_bins": 8,
+  "history_ms": 80,
+  "input_features": 40,
+  "training_windows": 267,
+  "training_samples": 62211,
+  "target_timing_ms": {
+    "reaching": 900,
+    "holding": 500,
+    "release": 500,
+    "rest": 500
+  },
+  "mat_fields": [
+    "A",
+    "H",
+    "Q",
+    "R",
+    "mSpk",
+    "mState",
+    "tap",
+    "trainSize"
+  ]
+}

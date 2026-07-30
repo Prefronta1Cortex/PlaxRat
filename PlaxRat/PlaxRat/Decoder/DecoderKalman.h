@@ -27,6 +27,7 @@ class DecoderKalman : public Decoder
 public:
 	DecoderKalman();
 	virtual ~DecoderKalman();
+	int getInputChannelCount() const { return inputChannelCount; }
 
 	// Inherited via DecoderBase
 	virtual vec Decode(vec spike, vec target) override;
@@ -41,6 +42,7 @@ public:
 	virtual void WriteToTxtUsingQStream(QString fileNamePrefix) override;
 
 private:
+	int inputChannelCount = PlaxRat::MaxChannelCount;
 	static bool leastSquareMethod(const mat &X, const mat &Y, mat &F, mat &R);
 	static mat computeInverseMatrix(mat &X);
 	//static vec Decode(vec spike, int target);

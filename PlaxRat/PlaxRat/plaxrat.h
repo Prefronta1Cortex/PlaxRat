@@ -22,6 +22,7 @@
 
 class Displayer;
 class MatTester;
+class DecoderKalman;
 class QDockWidget;
 class QLabel;
 
@@ -132,6 +133,7 @@ private:
 	void setupLegacyDisplay();
 	void setupTimingDiagnostics();
 	void setupRlppDiagnostics();
+	void setupRlppKalman();
 	Ui::PlaxRatClass ui;
 	ThreadPlexon *thrdPlexon = nullptr;
 	QTimer *legacyDisplayTimer;
@@ -156,6 +158,9 @@ private:
 	QLabel *rlppOutputLabels[5] = {};
 	QLabel *rlppProbabilityLabels[5] = {};
 	QLabel *rlppDecoderScoreLabels[3] = {};
+	DecoderKalman *rlppKalmanDecoder = nullptr;
+	vec rlppKalmanBinWithTap;
+	bool rlppKalmanEnabled = false;
 	bool bRecord;
 	QTextStream recordStream, recordStreamOfDecoder, recordStreamOfActivity,recordStreamOfDescription,behaviorTrainingStream;
 	QFile recordFile, recordFileOfDecoder,recordFileOfDescription,behaviorTrainingFile;
@@ -198,6 +203,10 @@ public:	//callbacks for paradigm
 	void enableBtnStart(bool flag);
 	void setCurrentState(QString stateName);
 	void changeTrainedNumber(int trainedNumber);
+	mat GenerateOutputForRlppKalman(
+		int outputBinNum,
+		int tone,
+		int holdingTime);
 
 	mat GenerateOutputForKalman(int outputBinNum, int tone, int HoldingTime);//2023-02-11, SONG, Zhiwei
 	void resetTempInput() { tempInputMatrixForThisTrial.reset(); }

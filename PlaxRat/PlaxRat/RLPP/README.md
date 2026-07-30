@@ -1,7 +1,8 @@
 # PlaxRat RLPP bridge
 
-This folder contains only the PlaxRat-side integration layer. It does not
-modify the existing Plexon, Kalman, UI, or project files.
+This folder contains the PlaxRat-side RLPP integration layer and the separate
+five-channel Kalman verification path. The legacy Kalman target generator and
+legacy decoder behavior remain unchanged.
 
 ## Vendored core runtime
 
@@ -26,6 +27,9 @@ The RLPP training-only `ann.cpp` is not required by the live inference bridge.
   parameters from a completed RLPP model output.
 - `RlppBridge.*` converts a 32-channel PlaxRat bin into mPFC physical channels
   17–32 and calls `RlppInferenceRuntime::step()` exactly once per bin.
+- `RlppKalmanTarget.*` provides the RLPP-specific 10 ms target generator.
+- `tools/train_rlpp_kalman.py` trains a compatible five-channel Kalman MAT
+  model from the 250923 binary M1 data.
 
 The default contract is:
 
@@ -80,8 +84,27 @@ RlppBridgeStepResult result =
 
 When `result.valid` is true, `result.inference.generatedM1` contains the five
 RLPP-generated M1 outputs and `result.inference.decoderScores` contains the
-movement decoder scores. This bridge does not send output to Kalman or
-behavioral-control code.
+movement decoder scores. PlaxRat reorders the generated outputs from
+`[12, 5, 3, 10, 9]` to `[3, 5, 9, 10, 12]`, maintains an eight-bin tap buffer,
+and sends that vector to the separate Kalman verifier when its MAT model is
+present. The verifier is diagnostic only; legacy behavioral-control code is
+not replaced.
+
+## Kalman verifier model
+
+Train the compatible MAT file with SciPy installed:
+
+```text
+python tools/train_rlpp_kalman.py ^
+  --mat "<path>/Mat Data/250923.mat" ^
+  --out models/top5_binary_m1/best_overall/kalman_verifier.mat
+```
+
+The trainer binarizes M1 counts, uses numerical feature order
+`[3, 5, 9, 10, 12]`, and uses eight 10 ms bins (80 ms) of history. Its fixed
+target window is 900 ms reaching, 500 ms holding, 500 ms release, and 500 ms
+rest. The output fields are `A`, `Q`, `H`, `R`, `trainSize`, `tap`, `mState`,
+and `mSpk`, matching `DecoderKalman::LoadFromMat`.
 
 For deployment, copy the `models` directory beside the executable under:
 
@@ -89,9 +112,11 @@ For deployment, copy the `models` directory beside the executable under:
 <PlaxRat.exe directory>/RLPP/models/top5_binary_m1/best_overall/
 ```
 
-The bridge checks both the executable directory and current working directory
-for this model path. If the bundle is absent or invalid, RLPP is disabled and
-the legacy PlaxRat path continues running.
+The bridge and verifier check both the executable directory and current
+working directory for this model path. If the RLPP bundle is absent or
+invalid, RLPP is disabled and the legacy PlaxRat path continues running. If
+only `kalman_verifier.mat` is absent, RLPP continues running without the
+Kalman verifier.
 
 ## Compatibility notes
 
