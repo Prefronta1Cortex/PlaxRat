@@ -208,6 +208,22 @@ void PlaxRat::setupRlppDiagnostics()
 	rlppKalmanStatusLabel = ui.lblRlppKalmanStatus;
 	rlppKalmanXLabel = ui.lblRlppKalmanX;
 	rlppKalmanYLabel = ui.lblRlppKalmanY;
+	rlppKalmanPlot = ui.pltRlppKalman;
+	rlppKalmanPlot->addGraph();
+	rlppKalmanPlot->addGraph();
+	rlppKalmanPlot->graph(0)->setName("X");
+	rlppKalmanPlot->graph(1)->setName("Y");
+	QPen kalmanXPen(QColor(0, 90, 180));
+	kalmanXPen.setWidth(2);
+	rlppKalmanPlot->graph(0)->setPen(kalmanXPen);
+	QPen kalmanYPen(QColor(190, 75, 45));
+	kalmanYPen.setWidth(2);
+	rlppKalmanPlot->graph(1)->setPen(kalmanYPen);
+	rlppKalmanPlot->legend->setVisible(true);
+	rlppKalmanPlot->xAxis->setLabel("Last 10 seconds");
+	rlppKalmanPlot->yAxis->setLabel("Position");
+	rlppKalmanPlot->xAxis->setRange(-10.0, 0.0);
+	rlppKalmanPlot->yAxis->setRange(-1.5, 1.5);
 
 	setDockNestingEnabled(true);
 	splitDockWidget(
@@ -293,8 +309,17 @@ void PlaxRat::refreshRlppDiagnostics()
 			rlppDecoderScoreLabels[index]->setText("--");
 		}
 		rlppKalmanStatusLabel->setText("DISABLED");
+		rlppKalmanStatusLabel->setStyleSheet(
+			"QLabel { background-color: rgb(110, 110, 110); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
 		rlppKalmanXLabel->setText("--");
 		rlppKalmanYLabel->setText("--");
+		rlppKalmanPlotTime.clear();
+		rlppKalmanPlotX.clear();
+		rlppKalmanPlotY.clear();
+		rlppKalmanPlot->graph(0)->data()->clear();
+		rlppKalmanPlot->graph(1)->data()->clear();
+		rlppKalmanPlot->replot(QCustomPlot::rpQueuedReplot);
 		return;
 	}
 
@@ -305,6 +330,9 @@ void PlaxRat::refreshRlppDiagnostics()
 			"color: white; font-weight: bold; border: 1px solid gray; }");
 		rlppKalmanStatusLabel->setText(
 			rlppKalmanEnabled ? "WARMING UP" : "MODEL MISSING");
+		rlppKalmanStatusLabel->setStyleSheet(
+			"QLabel { background-color: rgb(110, 110, 110); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
 		rlppKalmanXLabel->setText("--");
 		rlppKalmanYLabel->setText("--");
 		return;
@@ -344,14 +372,38 @@ void PlaxRat::refreshRlppDiagnostics()
 
 	if (latestRlppKalmanResultValid) {
 		rlppKalmanStatusLabel->setText("RUNNING");
+		rlppKalmanStatusLabel->setStyleSheet(
+			"QLabel { background-color: rgb(35, 145, 70); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
 		rlppKalmanXLabel->setText(
 			QString::number(latestRlppKalmanX, 'f', 3));
 		rlppKalmanYLabel->setText(
 			QString::number(latestRlppKalmanY, 'f', 3));
+		if (!rlppKalmanPlotTime.isEmpty()) {
+			const double latestTime = rlppKalmanPlotTime.last();
+			QVector<double> relativeTime;
+			relativeTime.reserve(rlppKalmanPlotTime.size());
+			for (int index = 0;
+				index < rlppKalmanPlotTime.size();
+				++index) {
+				relativeTime.append(
+					rlppKalmanPlotTime[index] - latestTime);
+			}
+			rlppKalmanPlot->graph(0)->setData(
+				relativeTime,
+				rlppKalmanPlotX);
+			rlppKalmanPlot->graph(1)->setData(
+				relativeTime,
+				rlppKalmanPlotY);
+			rlppKalmanPlot->replot(QCustomPlot::rpQueuedReplot);
+		}
 	}
 	else {
 		rlppKalmanStatusLabel->setText(
 			rlppKalmanEnabled ? "WARMING UP" : "MODEL MISSING");
+		rlppKalmanStatusLabel->setStyleSheet(
+			"QLabel { background-color: rgb(110, 110, 110); "
+			"color: white; font-weight: bold; border: 1px solid gray; }");
 		rlppKalmanXLabel->setText("--");
 		rlppKalmanYLabel->setText("--");
 	}
@@ -922,6 +974,15 @@ void PlaxRat::onRlppResultReady(
 	latestRlppKalmanX = result[0];
 	latestRlppKalmanY = result[1];
 	latestRlppKalmanResultValid = true;
+	rlppKalmanPlotTime.append(
+		static_cast<double>(timeBin) * PlaxTime::BinMs / 1000.0);
+	rlppKalmanPlotX.append(result[0]);
+	rlppKalmanPlotY.append(result[1]);
+	while (rlppKalmanPlotTime.size() > 1000) {
+		rlppKalmanPlotTime.remove(0);
+		rlppKalmanPlotX.remove(0);
+		rlppKalmanPlotY.remove(0);
+	}
 	displayer_X->setNewPredictValue(result[0]);
 	displayer_Y->setNewPredictValue(result[1]);
 	displayer_2D->setNewPredictValue(result[0]);

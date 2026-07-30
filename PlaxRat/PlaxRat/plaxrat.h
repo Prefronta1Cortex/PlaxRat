@@ -25,6 +25,7 @@ class MatTester;
 class DecoderKalman;
 class QDockWidget;
 class QLabel;
+class QCustomPlot;
 
 class PlaxRat : public QMainWindow
 {
@@ -161,9 +162,13 @@ private:
 	QLabel *rlppKalmanStatusLabel = nullptr;
 	QLabel *rlppKalmanXLabel = nullptr;
 	QLabel *rlppKalmanYLabel = nullptr;
+	QCustomPlot *rlppKalmanPlot = nullptr;
 	bool latestRlppKalmanResultValid = false;
 	double latestRlppKalmanX = 0.0;
 	double latestRlppKalmanY = 0.0;
+	QVector<double> rlppKalmanPlotTime;
+	QVector<double> rlppKalmanPlotX;
+	QVector<double> rlppKalmanPlotY;
 	DecoderKalman *rlppKalmanDecoder = nullptr;
 	vec rlppKalmanBinWithTap;
 	bool rlppKalmanEnabled = false;
